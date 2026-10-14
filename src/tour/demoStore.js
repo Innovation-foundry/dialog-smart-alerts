@@ -91,19 +91,20 @@ const ZONES = [
   { id: 'ZONE-KTR', name: 'Kataragama Road',         use_case_id: 'UC-001', road: 'KTR', lat: 6.3720, lng: 81.3310 },
 ]
 
+// No contact details: channel types only (nothing here is ever sent).
 const STAKEHOLDERS = [
   { id: 'SH-001', name: 'Park Warden – Yala', role: 'Wildlife Officer', org: 'Department of Wildlife Conservation',
     use_case_ids: ['UC-001'], on_call: true,
-    channels: [{ type: 'sms', address: '+94771000001', language: 'en' }, { type: 'whatsapp', address: '+94771000001', language: 'en' }] },
+    channels: [{ type: 'sms', language: 'en' }, { type: 'whatsapp', language: 'en' }] },
   { id: 'SH-002', name: 'Traffic Control – Southern Province', role: 'Traffic Controller', org: 'Road Development Authority',
     use_case_ids: ['UC-001'], on_call: true,
-    channels: [{ type: 'sms', address: '+94771000002', language: 'en' }, { type: 'email', address: 'traffic@rda.lk', language: 'en' }] },
+    channels: [{ type: 'sms', language: 'en' }, { type: 'email', language: 'en' }] },
   { id: 'SH-003', name: 'Police – Tissamaharama', role: 'Law Enforcement', org: 'Sri Lanka Police',
     use_case_ids: ['UC-001'], on_call: false,
-    channels: [{ type: 'sms', address: '+94771000003', language: 'en' }] },
+    channels: [{ type: 'sms', language: 'en' }] },
   { id: 'SH-004', name: 'DWC Operations Centre', role: 'Operations', org: 'Department of Wildlife Conservation',
     use_case_ids: ['UC-001'], on_call: true,
-    channels: [{ type: 'sms', address: '+94771000004', language: 'en' }, { type: 'whatsapp', address: '+94771000004', language: 'en' }] },
+    channels: [{ type: 'sms', language: 'en' }, { type: 'whatsapp', language: 'en' }] },
 ]
 const SH = Object.fromEntries(STAKEHOLDERS.map(s => [s.id, s]))
 
