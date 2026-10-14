@@ -74,6 +74,22 @@ def _recent_matching_events(use_case_id: str, zone_id: str | None,
     return events
 
 
+def _open_incident_event_ids(use_case_id: str, zone_id: str | None, same_zone: bool) -> set[str]:
+    """Event ids already attached to a still-open incident (same zone when required).
+    These are consumed, but they belong to the ongoing situation — so they must
+    still count toward confirming (escalating) that same incident."""
+    ids: set[str] = set()
+    for inc in data_store.get_all("incidents"):
+        if inc.get("use_case_id") != use_case_id:
+            continue
+        if inc.get("status") not in ("ACTIVE", "OPERATOR_REVIEW"):
+            continue
+        if same_zone and zone_id is not None and inc.get("zone_id") != zone_id:
+            continue
+        ids.update(inc.get("event_ids") or [])
+    return ids
+
+
 
 
 # ── main evaluator ────────────────────────────────────────────────────────────
@@ -118,10 +134,15 @@ async def evaluate_event(event: dict) -> tuple[dict | None, str | None]:
         # on the event record itself rather than by scanning for a still-
         # existing closed incident, so deleting an incident later can't
         # un-consume its events and let them re-confirm a fresh one.
+        # Exception: events of a still-OPEN incident do count, otherwise the
+        # opening detection is consumed immediately and a follow-up detection
+        # could never confirm (escalate) the incident it belongs to.
+        same_zone = bool(confirmation.get("same_zone"))
+        open_ids = _open_incident_event_ids(use_case_id, event.get("zone_id"), same_zone)
         matching_past = [
             e for e in past
             if e.get("id") != event.get("id")
-            and not e.get("consumed")
+            and (not e.get("consumed") or e.get("id") in open_ids)
             and _matches_conditions(e, rule.get("conditions", []))
         ]
         required = int(confirmation.get("required_count", 2))
