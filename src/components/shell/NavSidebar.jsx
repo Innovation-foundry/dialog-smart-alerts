@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, AlertTriangle, Map, Camera, Cpu, Users, GitBranch,
+  LayoutDashboard, AlertTriangle, Camera, Cpu, Users, GitBranch,
   Settings, Monitor, Layers, Bell, Rocket, Palette, PlayCircle, Globe,
 } from 'lucide-react'
 
@@ -9,7 +9,6 @@ const NAV = [
   { section: 'Operations' },
   { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/incidents',   icon: AlertTriangle,   label: 'Live Incidents' },
-  { to: '/map',         icon: Map,             label: 'Map View' },
   { to: '/gis',         icon: Globe,           label: 'GIS' },
   { to: '/road-signs',  icon: Monitor,         label: 'Road Signs' },
   { to: '/devices',     icon: Camera,          label: 'Devices' },

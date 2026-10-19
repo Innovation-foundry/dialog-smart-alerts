@@ -45,6 +45,16 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
   (no storms); confirmation ignores events consumed by closed incidents; `/api/system/health`
   returns liveness fields so the top-bar dot is green when healthy.
 
+## GIS instance (added)
+- `services/gis` is the platform's GIS instance (own FastAPI + PostGIS service, :8100 locally via
+  `services/gis/setup.ps1`). The platform talks to it only through `backend/gis_client.py`: proxy
+  (`/api/gis`, `/gis-app`, `/basemap`), enrichment in `_ingest_event` (stored as `geo_context`, summarised
+  as `incident.gis`), device placement on save. GIS has no login of its own — never expose it publicly.
+- `src/pages/GIS.jsx` frames `/gis-app/` (it replaced Map View; `/map` redirects to `/gis`). Clicks on the
+  GIS map stay in its own popup; no messages are passed to the platform page.
+- Local testing: the notifier sends real SMS (Ideabiz defaults in `notifier.py`) and MQTT joins the public
+  broker — override `IDEABIZ_API_URL` and `MQTT_BROKER_HOST` when testing.
+
 ## Current status / next step
 Setup Wizard rebuilt (`/setup`, 5 steps: Scenario → Sensors → Signs → Response → Review&Test),
 verified end-to-end for a **non-elephant** scenario via API replay (boards light, incident opens).

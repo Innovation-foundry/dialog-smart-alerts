@@ -5,7 +5,6 @@ import ErrorBoundary from './components/common/ErrorBoundary.jsx'
 // Operations pages
 import Dashboard from './pages/Dashboard.jsx'
 import LiveIncidents from './pages/LiveIncidents.jsx'
-import MapView from './pages/MapView.jsx'
 import GIS from './pages/GIS.jsx'
 import RoadSigns from './pages/RoadSigns.jsx'
 import Devices from './pages/Devices.jsx'
@@ -47,7 +46,8 @@ export default function App() {
           {/* Operations */}
           <Route path="/dashboard"  element={<Wrap><Dashboard /></Wrap>} />
           <Route path="/incidents"  element={<Wrap><LiveIncidents /></Wrap>} />
-          <Route path="/map"        element={<Wrap><MapView /></Wrap>} />
+          {/* Map View was replaced by the GIS page; old links still land on the map. */}
+          <Route path="/map"        element={<Navigate to="/gis" replace />} />
           <Route path="/gis"        element={<Wrap><GIS /></Wrap>} />
           <Route path="/road-signs" element={<Wrap><RoadSigns /></Wrap>} />
           <Route path="/devices"    element={<Wrap><Devices /></Wrap>} />
