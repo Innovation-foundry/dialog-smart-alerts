@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AppShell from './components/shell/AppShell.jsx'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx'
+import TourProvider from './tour/TourProvider.jsx'
 
 // Operations pages
 import Dashboard from './pages/Dashboard.jsx'
@@ -35,6 +36,7 @@ function Wrap({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <TourProvider>
       <Routes>
         {/* Setup wizard & Kiosk displays — full-screen, outside the dashboard chrome */}
         <Route path="/setup" element={<Wrap><SetupWizard /></Wrap>} />
@@ -67,6 +69,7 @@ export default function App() {
           <Route path="/styleguide"       element={<Wrap><StyleGuide /></Wrap>} />
         </Route>
       </Routes>
+      </TourProvider>
     </BrowserRouter>
   )
 }
