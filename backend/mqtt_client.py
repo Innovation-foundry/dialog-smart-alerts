@@ -33,6 +33,31 @@ def _assert_valid_image(img_bytes: bytes) -> None:
     with Image.open(io.BytesIO(img_bytes)) as im:
         im.load()
 
+
+def _decode_and_save_b64_image(raw: str, filename_prefix: str) -> str:
+    """Clean up, decode and validate a base64 image payload, save it under
+    UPLOADS_DIR, and return its /uploads/... URL. Raises on invalid/corrupt
+    input — callers decide the fallback (placeholder image, drop, etc.)."""
+    import base64
+
+    b64_data = raw.strip()
+    if "," in b64_data:
+        b64_data = b64_data.split(",")[-1].strip()
+    # Fix JSON space-encoding of + characters
+    b64_data = b64_data.replace(" ", "+").replace("\n", "").replace("\r", "")
+    missing_padding = len(b64_data) % 4
+    if missing_padding:
+        b64_data += "=" * (4 - missing_padding)
+
+    img_bytes = base64.b64decode(b64_data)
+    _assert_valid_image(img_bytes)
+    img_filename = f"{filename_prefix}_{uuid.uuid4().hex[:6]}.jpg"
+    img_path = UPLOADS_DIR / img_filename
+    with open(img_path, "wb") as f:
+        f.write(img_bytes)
+    return f"/uploads/{img_filename}"
+
+
 class MQTTClientManager:
     def __init__(self, app):
         self.app = app
@@ -72,9 +97,6 @@ class MQTTClientManager:
             if not os.getenv("MQTT_BROKER_PORT"):
                 self.broker_port = 8883
             self.client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
-
-        # In-memory deduplication/processing map if needed
-        self.last_processed_timestamps = {}
 
         # The gateway can publish a detection photo as its own raw-bytes MQTT
         # message on the image topic, decoupled from the JSON alert that opens
@@ -117,9 +139,6 @@ class MQTTClientManager:
 
     def on_message(self, client, userdata, msg):
         try:
-            import base64
-            import uuid
-
             # Parse the incoming JSON message
             payload_str = msg.payload.decode('utf-8')
             payload = json.loads(payload_str)
@@ -179,26 +198,8 @@ class MQTTClientManager:
 
             if raw_img and isinstance(raw_img, str) and not image_url:
                 try:
-                    b64_data = raw_img.strip()
-                    if "," in b64_data:
-                        b64_data = b64_data.split(",")[-1].strip()
-
-                    # Fix JSON space-encoding of + characters
-                    b64_data = b64_data.replace(" ", "+").replace("\n", "").replace("\r", "")
-
-                    # Auto-fix missing Base64 padding (=)
-                    missing_padding = len(b64_data) % 4
-                    if missing_padding:
-                        b64_data += "=" * (4 - missing_padding)
-
-                    img_bytes = base64.b64decode(b64_data)
-                    _assert_valid_image(img_bytes)
-                    img_filename = f"img_mqtt_{entity_id}_{uuid.uuid4().hex[:6]}.jpg"
-                    img_path = UPLOADS_DIR / img_filename
-                    with open(img_path, "wb") as f:
-                        f.write(img_bytes)
-                    image_url = f"/uploads/{img_filename}"
-                    print(f"[MQTT IMAGE] Decoded and saved Base64 image: {image_url} ({len(img_bytes)/1024:.1f}KB)")
+                    image_url = _decode_and_save_b64_image(raw_img, f"img_mqtt_{entity_id}")
+                    print(f"[MQTT IMAGE] Decoded and saved Base64 image: {image_url}")
                 except Exception as img_err:
                     # Truncation is the usual cause: base64.b64decode() doesn't error on a
                     # short/cut-off string, it just yields fewer valid bytes — so a payload
@@ -274,20 +275,7 @@ class MQTTClientManager:
             if msg.topic == self.topic_image or msg.topic.endswith("/image") or raw_text.startswith(("iVBORw", "/9j/", "data:image")):
                 print(f"[MQTT RAW IMAGE] Non-JSON raw Base64 image received on '{msg.topic}' (Length: {len(raw_text)} chars)")
                 try:
-                    b64_data = raw_text
-                    if "," in b64_data:
-                        b64_data = b64_data.split(",")[-1].strip()
-                    b64_data = b64_data.replace(" ", "+").replace("\n", "").replace("\r", "")
-                    missing_padding = len(b64_data) % 4
-                    if missing_padding:
-                        b64_data += "=" * (4 - missing_padding)
-                    img_bytes = base64.b64decode(b64_data)
-                    _assert_valid_image(img_bytes)
-                    img_filename = f"img_mqtt_raw_{uuid.uuid4().hex[:6]}.jpg"
-                    img_path = UPLOADS_DIR / img_filename
-                    with open(img_path, "wb") as f:
-                        f.write(img_bytes)
-                    image_url = f"/uploads/{img_filename}"
+                    image_url = _decode_and_save_b64_image(raw_text, "img_mqtt_raw")
                     print(f"[MQTT RAW IMAGE] Decoded and saved raw image: {image_url}")
                 except Exception as b64_err:
                     print(f"[MQTT RAW IMAGE] Error decoding raw Base64 ({b64_err}), dropping (no image to attach).")
