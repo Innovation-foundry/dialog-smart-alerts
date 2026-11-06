@@ -123,7 +123,7 @@ async def dispatch(incident: dict, rule: dict, action_key: str, event: dict) -> 
     template = action_block.get(
         "message_template",
         "Alert [{severity}]: {object_type} detected in {zone_name} by {device_name}. "
-        "Confidence: {confidence}%. Incident: {incident_id}"
+        "Confidence: {confidence}%. Location: {map_link} Incident: {incident_id}"
     )
     ctx = _build_context(incident, event)
     message = _render(template, ctx)
