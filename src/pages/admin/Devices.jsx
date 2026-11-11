@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, MapPin, Copy } from 'lucide-react'
+import { Plus, MapPin } from 'lucide-react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { useApi } from '../../hooks/useApi.js'
@@ -45,6 +45,9 @@ export default function Devices() {
   const [confirmDel, setConfirmDel] = useState(null)
   const [viewMode, setViewMode]     = useState('table')
   const [pickingMap, setPickingMap] = useState(false)
+  // The real key only ever exists in a response at creation/regeneration —
+  // no endpoint can fetch it back out afterward, so this is its one showing.
+  const [revealedKey, setRevealedKey] = useState(null)
 
   function openNew()     { setEditing(null); setForm(BLANK); setSaveError(null); setSlideOpen(true) }
   function openEdit(dev) { setEditing(dev);  setForm({ ...dev }); setSaveError(null); setSlideOpen(true) }
@@ -67,26 +70,19 @@ export default function Devices() {
       // (e.g. "ab12…ff90") — never resubmit it on edit, or we'd overwrite
       // the device's real key with that masked placeholder.
       const { api_key, ...payload } = form
-      editing ? await update(editing.id, payload) : await create(payload)
+      if (editing) {
+        await update(editing.id, payload)
+      } else {
+        const created = await create(payload)
+        // Full key only ever appears in this one response — show it now,
+        // there's no endpoint to fetch it back out afterward.
+        if (created?.api_key) setRevealedKey(created.api_key)
+      }
       close()
     } catch (e) {
       setSaveError(e.message)
     } finally {
       setSaving(false)
-    }
-  }
-
-  // The device list/get endpoints only return a masked preview of the key
-  // (nothing here leaks every device's real key in one unauthenticated
-  // call) — copying or regenerating fetches/replaces the real value on demand.
-  async function copyKey(id) {
-    try {
-      const res = await fetch(`/api/devices/${id}/api-key`)
-      if (!res.ok) throw new Error(await res.text())
-      const { api_key } = await res.json()
-      await navigator.clipboard?.writeText(api_key)
-    } catch {
-      // clipboard/permission failures are non-critical; nothing to surface here
     }
   }
 
@@ -97,9 +93,9 @@ export default function Devices() {
       const res = await fetch(`/api/devices/${editing.id}/regenerate-key`, { method: 'POST' })
       if (!res.ok) throw new Error(await res.text())
       const { api_key } = await res.json()
-      await navigator.clipboard?.writeText(api_key)
       await fetchAll()
       close()
+      setRevealedKey(api_key)
     } catch (e) {
       setSaveError(e.message)
     } finally {
@@ -144,12 +140,8 @@ export default function Devices() {
       ) },
     { key: 'api_key', label: 'API Key',
       render: row => (
-        <div className="flex items-center gap-1.5">
-          <code className="text-xs font-mono text-ink-muted bg-surface px-1.5 py-0.5 rounded" title="Masked — click copy for the real key">{row.api_key}</code>
-          <button onClick={() => copyKey(row.id)} title="Copy real API key" className="text-ink-muted hover:text-ink">
-            <Copy size={11} />
-          </button>
-        </div>
+        <code className="text-xs font-mono text-ink-muted bg-surface px-1.5 py-0.5 rounded"
+              title="Shown once at creation/regeneration — not retrievable afterward">{row.api_key}</code>
       ),
     },
   ]
@@ -284,7 +276,7 @@ export default function Devices() {
           )}
 
           <Field label="API Key" hint={editing
-            ? 'Shown masked for display only — use Copy in the table, or Regenerate to issue a new one.'
+            ? "Masked — the real key was only ever shown once, at creation/regeneration. Regenerate to issue (and see) a new one."
             : 'Auto-generated on save. Devices use this to authenticate events.'}>
             {editing ? (
               <div className="flex items-center gap-2">
@@ -306,6 +298,26 @@ export default function Devices() {
         onConfirm={async () => { await remove(confirmDel.id); setConfirmDel(null) }}
         onCancel={() => setConfirmDel(null)}
       />
+
+      {revealedKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-surface rounded-lg shadow-xl max-w-md w-full p-5 space-y-3">
+            <h3 className="font-semibold text-ink">Device API key</h3>
+            <p className="text-sm text-ink-muted">
+              Copy this now — it won't be shown again. Give it to the device operator.
+            </p>
+            <code className="block text-xs font-mono bg-surface-alt px-3 py-2 rounded break-all">
+              {revealedKey}
+            </code>
+            <div className="flex justify-end gap-2 pt-1">
+              <Btn type="button" onClick={() => navigator.clipboard?.writeText(revealedKey)}>
+                Copy
+              </Btn>
+              <Btn type="button" onClick={() => setRevealedKey(null)}>Done</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

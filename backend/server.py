@@ -337,14 +337,6 @@ async def create_device(req: Request):
 async def get_device(id: str):
     return _redact_device(_get("devices", id))
 
-@app.get("/api/devices/{id}/api-key")
-async def reveal_device_key(id: str):
-    """Explicit, deliberate reveal of a device's plaintext key — separate from
-    the list/get endpoints so a routine fetch of the device table can't bulk-
-    harvest every key in one call."""
-    device = _get("devices", id)
-    return {"id": id, "api_key": device.get("api_key")}
-
 @app.put("/api/devices/{id}")
 async def update_device(id: str, req: Request):
     body = await req.json()
