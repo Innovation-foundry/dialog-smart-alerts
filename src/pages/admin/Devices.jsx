@@ -276,13 +276,10 @@ export default function Devices() {
           )}
 
           <Field label="API Key" hint={editing
-            ? "Masked — the real key was only ever shown once, at creation/regeneration. Regenerate to issue (and see) a new one."
+            ? "Only ever shown once, at creation/regeneration — not displayed here. Regenerate to issue (and see) a new one."
             : 'Auto-generated on save. Devices use this to authenticate events.'}>
             {editing ? (
-              <div className="flex items-center gap-2">
-                <code className="text-xs font-mono text-ink-muted bg-surface px-2 py-1.5 rounded flex-1">{form.api_key}</code>
-                <Btn type="button" onClick={regenerateKey}>Regenerate</Btn>
-              </div>
+              <Btn type="button" onClick={regenerateKey}>Regenerate</Btn>
             ) : (
               <Input value="Auto-generated on save" disabled />
             )}
