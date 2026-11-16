@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, AlertTriangle, Map, Camera, Cpu, Users, GitBranch,
-  Settings, Monitor, Layers, Bell, Rocket, Palette, PlayCircle, Globe, Clock,
-  Radio,
+  LayoutDashboard, AlertTriangle, Map, Camera, Users, GitBranch,
+  Settings, Monitor, Layers, Bell, Rocket, PlayCircle, Globe, Clock,
+  Radio, Signpost,
 } from 'lucide-react'
 import { useTour } from '../../tour/TourProvider.jsx'
 
@@ -15,7 +15,6 @@ const NAV = [
   { to: '/gis',         icon: Globe,           label: 'GIS' },
   { to: '/road-signs',  icon: Monitor,         label: 'Road Signs' },
   { to: '/devices',     icon: Camera,          label: 'Devices' },
-  { to: '/hardware',    icon: Cpu,             label: 'Hardware Units' },
 
   null, // divider
 
@@ -25,16 +24,15 @@ const NAV = [
   { to: '/admin/use-cases',   icon: Layers,        label: 'Use Cases' },
   { to: '/admin/rules',       icon: GitBranch,     label: 'Rules Engine' },
   { to: '/admin/stakeholders',icon: Users,         label: 'Stakeholders' },
-  { to: '/admin/devices',     icon: Camera,        label: 'Device Registry' },
-  { to: '/admin/road-signs',  icon: Monitor,       label: 'Sign Board Registry' },
+  { to: '/admin/road-signs',  icon: Signpost,      label: 'Sign Board Registry' },
 
   null, // divider
 
   // System
   { section: 'System' },
-  { to: '/admin/escalation',  icon: Bell,     label: 'Escalation' },
-  { to: '/admin/templates',   icon: Settings, label: 'Templates' },
-  { to: '/styleguide',        icon: Palette,  label: 'Design System' },
+  // `preview` = the page exists but is not wired to the platform yet (see its banner).
+  { to: '/admin/escalation',  icon: Bell,     label: 'Escalation', preview: true },
+  { to: '/admin/templates',   icon: Settings, label: 'Templates',  preview: true },
 
   null, // divider
 
@@ -48,13 +46,13 @@ const NAV = [
 export default function NavSidebar() {
   const tour = useTour()
   return (
-    <nav data-tour="nav" className="w-56 bg-white border-r border-line flex flex-col gap-1.5 py-4 shrink-0 overflow-y-auto shadow-[1px_0_4px_rgba(16,24,40,0.02)]">
+    <nav data-tour="nav" className="w-56 bg-white border-r border-line flex flex-col gap-0.5 py-3 shrink-0 overflow-y-auto">
       {NAV.map((item, i) => {
-        if (item === null) return <div key={i} className="my-2 border-t border-line/60 mx-3" />
+        if (item === null) return <div key={i} className="my-1" />
         if (item.section) {
           return (
-            <div key={i} className="px-4 pt-4 pb-1.5">
-              <span className="text-[12px] font-extrabold text-brand uppercase tracking-wider border-b border-brand/20 pb-0.5 inline-block w-full">
+            <div key={i} className="px-6 pt-3 pb-1">
+              <span className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
                 {item.section}
               </span>
             </div>
@@ -93,6 +91,11 @@ export default function NavSidebar() {
                 )}
                 <item.icon size={16} className={isActive ? 'text-brand' : 'text-ink-subtle group-hover:text-ink transition-colors'} />
                 <span>{item.label}</span>
+                {item.preview && (
+                  <span className="ml-auto text-xs text-ink-subtle">
+                    Preview
+                  </span>
+                )}
               </>
             )}
           </NavLink>

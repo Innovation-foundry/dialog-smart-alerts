@@ -1,7 +1,6 @@
 /**
  * Elevated Dialog — design-system barrel.
  * Import primitives from here: `import { Button, Card, Field } from '../components/ui'`
- * See /styleguide for a live reference of every primitive + token.
  */
 export { Button, IconButton, Spinner } from './Button.jsx'
 export { Field, Input, Textarea, Select, Checkbox, Toggle, SegmentedControl } from './forms.jsx'

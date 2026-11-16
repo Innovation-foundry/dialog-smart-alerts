@@ -5,7 +5,7 @@
  * This file re-exports them under their original names so existing admin pages
  * keep working unchanged while they migrate to importing from `../ui` directly.
  *
- * New code should import from `components/ui` instead. See /styleguide.
+ * New code should import from `components/ui` instead.
  */
 import { Drawer, ConfirmDialog as UiConfirmDialog } from '../ui/overlays.jsx'
 

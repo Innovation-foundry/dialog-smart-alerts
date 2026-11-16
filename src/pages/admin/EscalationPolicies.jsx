@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Banner, Button, PageHeader } from '../../components/ui'
 
 const SEED = [
   { id: 'e1', name: 'Critical Immediate', trigger: 'CRITICAL', delay_s: 0,   contacts: 'All field officers' },
@@ -21,13 +22,17 @@ export default function AdminEscalation() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-semibold text-ink">Escalation Policies</h1>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-brand text-white rounded hover:bg-brand-hover">
-          <Plus size={14} /> Add
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Escalation Policies"
+        description="Who is contacted, and how fast, as an incident's severity rises."
+        action={<Button onClick={openCreate}><Plus size={14} /> Add</Button>}
+      />
+      <div className="p-6 max-w-3xl">
+      <Banner variant="warning" title="Preview only — not connected yet" className="mb-4">
+        Policies on this page are examples. Changes are not saved and do not affect who gets notified.
+        Who is alerted, and when, is set in the Rules Engine.
+      </Banner>
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="bg-surface-alt border-b border-line">
@@ -81,6 +86,7 @@ export default function AdminEscalation() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

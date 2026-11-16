@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Banner, Button, PageHeader } from '../../components/ui'
 
 const SEED = [
   { id: 't1', name: 'SMS Critical',   channel: 'sms',   body: '⚠️ CRITICAL: {{object}} detected near {{location}}. Incident {{incident_id}}. Please respond immediately.' },
@@ -21,13 +22,17 @@ export default function AdminTemplates() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-semibold text-ink">Notification Templates</h1>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-brand text-white rounded hover:bg-brand-hover">
-          <Plus size={14} /> Add
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Notification Templates"
+        description="Reusable message wording for SMS, email and push alerts."
+        action={<Button onClick={openCreate}><Plus size={14} /> Add</Button>}
+      />
+      <div className="p-6 max-w-4xl">
+      <Banner variant="warning" title="Preview only — not connected yet" className="mb-4">
+        Templates on this page are examples. Changes are not saved and are not used in any alert.
+        The message that is actually sent is set on each rule in the Rules Engine.
+      </Banner>
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="bg-surface-alt border-b border-line">
@@ -77,6 +82,7 @@ export default function AdminTemplates() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

@@ -15,16 +15,21 @@ import {
 import { Line, Doughnut } from 'react-chartjs-2'
 import { isToday } from 'date-fns'
 
-import {
-  Activity, AlertTriangle, Camera, CheckCircle2, Cpu,
-  Monitor, Shield, ArrowUpRight, Clock,
-  UserCheck
-} from 'lucide-react'
+import { AlertTriangle, Camera, CheckCircle2, Clock } from 'lucide-react'
 
 import { useIncidents } from '../hooks/useIncidents.js'
 import { useApi } from '../hooks/useApi.js'
 import { useIncidentStream } from '../hooks/useIncidentStream.js'
 import { relativeTime } from '../lib/format.js'
+import { Banner, Card, PageHeader, StatusBadge } from '../components/ui'
+import { useTour } from '../tour/TourProvider.jsx'
+
+// Chart.js can't read Tailwind classes, so these mirror the tailwind.config.js tokens.
+const C = {
+  critical: '#D92D20', low: '#12B76A', high: '#F2841C', muted: '#98A2B3',
+  inkMuted: '#667085', surface: '#F2F4F7', white: '#FFFFFF',
+}
+const FONT = { family: 'Inter', size: 12 }
 
 // Register ChartJS elements
 ChartJS.register(
@@ -40,10 +45,13 @@ ChartJS.register(
 )
 
 export default function Dashboard() {
-  const { incidents, applyEvent } = useIncidents()
+  const { incidents, error: incidentsError, applyEvent } = useIncidents()
   const { data: devices }        = useApi('/api/devices')
   const { data: events }         = useApi('/api/events')
-  useIncidentStream(applyEvent)
+  const streamStatus = useIncidentStream(applyEvent)
+  const tour = useTour()
+  // The header badge reflects the real event stream (the guided tour runs on its own data).
+  const streamLive = tour?.active || streamStatus === 'live'
 
   // ── Dynamic Metric Computations ─────────────────────────────────────────────
   const activeCount = useMemo(() => incidents.filter(i => i.status === 'ACTIVE' || i.status === 'OPERATOR_REVIEW').length, [incidents])
@@ -59,15 +67,19 @@ export default function Dashboard() {
 
   // Camera health calculations
   const onlineCameras = useMemo(() => (devices || []).filter(d => d.online !== false).length, [devices])
+  const totalDevices = (devices || []).length
+  const offlineDevices = totalDevices - onlineCameras
 
   // ── Dynamic 24-Hour Trend Data ──────────────────────────────────────────────
   const trend24h = useMemo(() => {
     const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
     const counts = new Array(12).fill(0)
+    const since = Date.now() - 24 * 60 * 60 * 1000
     if (events && events.length > 0) {
       events.forEach(e => {
         if (!e.received_at) return
         const dt = new Date(e.received_at)
+        if (isNaN(dt) || dt.getTime() < since) return
         const hr = dt.getHours()
         const idx = Math.floor(hr / 2) % 12
         counts[idx]++
@@ -76,404 +88,246 @@ export default function Dashboard() {
     return { hours, counts }
   }, [events])
 
-  // Doughnut Chart Data (Detection Statistics)
-  const doughnutData = {
-    labels: ['Active Incidents', 'Resolved Incidents', 'False Positives', 'Pending Verification'],
-    datasets: [
-      {
-        data: [activeCount, resolvedCount, falsePositives, pendingCount],
-        backgroundColor: ['#D92D20', '#12B76A', '#98A2B3', '#F2841C'],
-        borderWidth: 2,
-        borderColor: '#ffffff',
-      },
-    ],
-  }
+  // Busiest 2-hour window in the last 24 hours — computed, or nothing to report.
+  const peak = useMemo(() => {
+    const max = Math.max(...trend24h.counts)
+    if (!max) return null
+    const idx = trend24h.counts.indexOf(max)
+    const start = trend24h.hours[idx]
+    const end = `${String((idx * 2 + 2) % 24).padStart(2, '0')}:00`
+    return { window: `${start} - ${end}`, count: max }
+  }, [trend24h])
 
+  // Incident outcomes (doughnut)
+  const doughnutData = {
+    labels: ['Active', 'Resolved', 'False positive', 'Awaiting confirmation'],
+    datasets: [{
+      data: [activeCount, resolvedCount, falsePositives, pendingCount],
+      backgroundColor: [C.critical, C.low, C.muted, C.high],
+      borderWidth: 2,
+      borderColor: C.white,
+    }],
+  }
   const doughnutOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    cutout: '68%',
     plugins: {
-      legend: { position: 'bottom', labels: { boxWidth: 8, font: { family: 'Inter', size: 9 } } },
+      legend: { position: 'right', labels: { boxWidth: 10, boxHeight: 10, font: FONT, color: C.inkMuted } },
       tooltip: { cornerRadius: 6 },
     },
-    cutout: '70%',
   }
 
-  // 24-Hour Trend Line Chart Data
+  // Detections per 2-hour window, last 24 hours (line)
   const trendData = {
     labels: trend24h.hours,
-    datasets: [
-      {
-        label: 'Elephant Detections',
-        data: trend24h.counts,
-        borderColor: '#D92D20',
-        backgroundColor: (context) => {
-          const ctx = context.chart.ctx
-          const gradient = ctx.createLinearGradient(0, 0, 0, 140)
-          gradient.addColorStop(0, 'rgba(217, 45, 32, 0.25)')
-          gradient.addColorStop(1, 'rgba(217, 45, 32, 0.0)')
-          return gradient
-        },
-        fill: true,
-        tension: 0.4,
-        pointBackgroundColor: '#D92D20',
-        pointRadius: 2.5,
-        pointHoverRadius: 5,
-      },
-    ],
+    datasets: [{
+      label: 'Detections',
+      data: trend24h.counts,
+      borderColor: C.critical,
+      backgroundColor: 'rgba(217, 45, 32, 0.08)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      borderWidth: 2,
+    }],
   }
-
   const trendOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     scales: {
-      x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 8.5 } } },
-      y: { grid: { color: '#F2F4F7' }, ticks: { font: { family: 'Inter', size: 8.5 }, stepSize: 1 }, beginAtZero: true },
+      x: { grid: { display: false }, ticks: { font: FONT, color: C.inkMuted, maxRotation: 0, autoSkip: true } },
+      y: { grid: { color: C.surface }, ticks: { font: FONT, color: C.inkMuted, stepSize: 1, precision: 0 }, beginAtZero: true },
     },
   }
 
-  // Dynamic Activity Timeline Events (Matching the user guidelines)
+  // Activity timeline — built only from what the platform actually recorded:
+  // detections, incidents opening, and incidents closing. Nothing is filled in.
   const activityTimeline = useMemo(() => {
-    const list = []
-    
-    // Sort all events and incidents by time
-    const allItems = []
-    
-    if (events && events.length > 0) {
-      events.forEach(e => {
-        allItems.push({
-          type: 'event',
-          time: e.received_at,
-          data: e
-        })
+    const items = []
+    const cap = (v) => { const t = String(v || 'object'); return t.charAt(0).toUpperCase() + t.slice(1) }
+
+    ;(events || []).forEach(e => {
+      if (!e.received_at) return
+      const where = e.device_name || e.device_id
+      const conf = e.confidence == null ? '' : ` · ${Math.round(e.confidence)}% confidence`
+      items.push({
+        ts: e.received_at,
+        text: `${cap(e.object_type)} detected${where ? ` by ${where}` : ''}${conf}`,
+        icon: Camera, tone: 'text-ink-muted',
       })
-    }
-    
-    if (incidents && incidents.length > 0) {
-      incidents.forEach(i => {
-        allItems.push({
-          type: 'incident',
-          time: i.opened_at,
-          data: i
+    })
+
+    ;(incidents || []).forEach(inc => {
+      const id = inc.incident_id || inc.id || ''
+      const zone = inc.zone || inc.zone_name
+      if (inc.opened_at) {
+        items.push({
+          ts: inc.opened_at,
+          text: `Incident ${id} opened${zone ? ` in ${zone}` : ''}`,
+          icon: AlertTriangle, tone: 'text-sev-critical',
         })
-      })
-    }
-    
-    // Sort by timestamp descending (newest first)
-    allItems.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
-    
-    const formatTimeOnly = (isoString) => {
-      if (!isoString) return '08:15'
-      try {
-        const d = new Date(isoString)
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-      } catch (err) {
-        return '08:15'
       }
-    }
-    
-    allItems.slice(0, 15).forEach(item => {
-      const timeStr = formatTimeOnly(item.time)
-      
-      if (item.type === 'event') {
-        const e = item.data
-        list.push({
-          time: timeStr,
-          text: `Elephant detected near Camera ${e.device_id || 'DEV-001'}`,
-          icon: Camera,
-          color: 'text-blue-600',
-          bg: 'bg-blue-50'
+      if (['RESOLVED', 'CLOSED', 'EXPIRED'].includes(inc.status) && (inc.expired_at || inc.updated_at)) {
+        items.push({
+          ts: inc.expired_at || inc.updated_at,
+          text: `Incident ${id} ${inc.status.toLowerCase()}`,
+          icon: inc.status === 'EXPIRED' ? Clock : CheckCircle2,
+          tone: inc.status === 'EXPIRED' ? 'text-ink-subtle' : 'text-sev-low',
         })
-        list.push({
-          time: timeStr,
-          text: `AI confidence ${Math.round(e.confidence || 95)}%`,
-          icon: Cpu,
-          color: 'text-purple-600',
-          bg: 'bg-purple-50'
-        })
-      } else if (item.type === 'incident') {
-        const inc = item.data
-        list.push({
-          time: timeStr,
-          text: `Incident created`,
-          icon: AlertTriangle,
-          color: 'text-[#D92D20]',
-          bg: 'bg-red-50'
-        })
-        list.push({
-          time: timeStr,
-          text: `Smart road signs updated`,
-          icon: Monitor,
-          color: 'text-amber-500',
-          bg: 'bg-amber-50'
-        })
-        
-        if (inc.status === 'RESOLVED' || inc.status === 'CLOSED') {
-          list.push({
-            time: timeStr,
-            text: `Operator acknowledged incident ${inc.id || inc.incident_id || ''}`,
-            icon: UserCheck,
-            color: 'text-emerald-600',
-            bg: 'bg-emerald-50'
-          })
-          list.push({
-            time: timeStr,
-            text: `No elephant detected for 15 minutes`,
-            icon: Clock,
-            color: 'text-gray-500',
-            bg: 'bg-gray-50'
-          })
-          list.push({
-            time: timeStr,
-            text: `Incident automatically cleared`,
-            icon: CheckCircle2,
-            color: 'text-emerald-600',
-            bg: 'bg-emerald-50'
-          })
-        }
       }
     })
-    
-    // Ensure we have some default styled elements in case DB is empty
-    if (list.length === 0) {
-      return [
-        { time: '08:15', text: 'Elephant detected near Camera CAM-05', icon: Camera, color: 'text-blue-600' },
-        { time: '08:15', text: 'AI confidence 97%', icon: Cpu, color: 'text-purple-600' },
-        { time: '08:16', text: 'Incident created', icon: AlertTriangle, color: 'text-[#D92D20]' },
-        { time: '08:16', text: 'Smart road signs updated', icon: Monitor, color: 'text-amber-500' },
-        { time: '08:17', text: 'Operator acknowledged incident', icon: UserCheck, color: 'text-emerald-600' },
-        { time: '08:35', text: 'No elephant detected for 15 minutes', icon: Clock, color: 'text-gray-500' },
-        { time: '08:36', text: 'Incident automatically cleared', icon: CheckCircle2, color: 'text-emerald-600' }
-      ]
-    }
-    
-    return list.slice(0, 10)
+
+    items.sort((x, y) => new Date(y.ts) - new Date(x.ts))
+    return items.slice(0, 10).map(it => {
+      const d = new Date(it.ts)
+      return { ...it, time: isNaN(d) ? '—' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) }
+    })
   }, [events, incidents])
 
-  // Status mapping
-  const mapStatusLabel = (status) => {
-    if (status === 'ACTIVE') return 'Active'
-    if (status === 'OPERATOR_REVIEW') return 'Monitoring'
-    if (status === 'EXPIRED') return 'Expired'
-    return 'Resolved'
-  }
+  const recent = incidents.slice(0, 5)
+  const countOf = (inc) => inc.number_of_elephants ?? inc.data?.number_of_elephants
+  const hasCounts = recent.some(i => countOf(i) != null)
+
+  const stats = [
+    { label: 'Active incidents', value: activeCount, tone: activeCount > 0 ? 'text-sev-critical' : 'text-ink' },
+    { label: 'Critical', value: criticalCount, tone: criticalCount > 0 ? 'text-sev-critical' : 'text-ink' },
+    { label: 'Detections today', value: totalDetectionsToday, tone: 'text-ink' },
+    {
+      label: 'Devices online',
+      value: `${onlineCameras} / ${totalDevices}`,
+      tone: offlineDevices > 0 ? 'text-sev-critical' : 'text-ink',
+      note: totalDevices === 0 ? 'None registered' : offlineDevices > 0 ? `${offlineDevices} offline` : 'All online',
+    },
+  ]
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#F8F9FC] p-6 space-y-6">
-      
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-extrabold text-ink tracking-tight flex items-center gap-2">
-            Dashboard
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Live Telemetry Active
-            </span>
-          </h1>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Real-time early warning telemetry synced across Yala B43 Corridor & Wilpattu Buffer Zone.
-          </p>
-        </div>
-      </div>
+    <div>
+    <PageHeader
+      title="Dashboard"
+      description="Detections, incidents and device status across all monitored zones."
+      action={streamLive ? (
+        <span className="inline-flex items-center gap-2 text-sm text-ink-muted">
+          <span className="w-2 h-2 rounded-full bg-sev-low" /> Live updates on
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-2 text-sm text-ink">
+          <span className="w-2 h-2 rounded-full bg-sev-medium" />
+          {streamStatus === 'connecting' ? 'Connecting…' : 'Live updates lost — reconnecting'}
+        </span>
+      )}
+    />
+    <div className="p-6 space-y-6">
 
-      {/* ── 1. Overview Cards (4 Summary Cards) ───────────────────────── */}
-      <div data-tour="kpis" className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {/* Card 1: Active Elephant Incidents */}
-        <div className="bg-white border border-[#EAECF0] rounded-xl p-3 shadow-sm space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-bold text-ink-muted leading-tight">Active Elephant Incidents</span>
-            <AlertTriangle className="w-3.5 h-3.5 text-[#D92D20] shrink-0" />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xl font-black text-ink">{activeCount}</div>
-            <div className="flex items-center gap-0.5 text-[9px] font-extrabold text-[#D92D20]">
-              <ArrowUpRight className="w-2.5 h-2.5" /> +12% vs yesterday
+      {incidentsError && (
+        <Banner variant="error" title="Can't reach the alerting backend">
+          Incidents on this page may be missing or out of date. Retrying every few seconds.
+        </Banner>
+      )}
+
+      {/* Headline numbers: one strip, not four boxes */}
+      <Card padded={false} data-tour="kpis">
+        <dl className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-line">
+          {stats.map(st => (
+            <div key={st.label} className="px-5 py-4">
+              <dt className="text-sm text-ink-muted">{st.label}</dt>
+              <dd className={`mt-1 text-3xl font-semibold tabular-nums ${st.tone}`}>{st.value}</dd>
+              {st.note && <div className="mt-0.5 text-sm text-ink-muted">{st.note}</div>}
             </div>
-          </div>
-        </div>
+          ))}
+        </dl>
+      </Card>
 
-        {/* Card 2: Critical Incidents */}
-        <div className="bg-white border border-[#EAECF0] rounded-xl p-3 shadow-sm space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-bold text-ink-muted leading-tight">Critical Incidents</span>
-            <Shield className="w-3.5 h-3.5 text-[#D92D20] shrink-0" />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xl font-black text-ink">{criticalCount}</div>
-            <div className="flex items-center gap-0.5 text-[9px] font-extrabold text-[#D92D20]">
-              <ArrowUpRight className="w-2.5 h-2.5" /> +5% vs yesterday
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Elephants Detected Today */}
-        <div className="bg-white border border-[#EAECF0] rounded-xl p-3 shadow-sm space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-bold text-ink-muted leading-tight">Elephants Detected Today</span>
-            <Activity className="w-3.5 h-3.5 text-[#D92D20] shrink-0" />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xl font-black text-ink">{totalDetectionsToday}</div>
-            <div className="flex items-center gap-0.5 text-[9px] font-extrabold text-emerald-600">
-              <ArrowUpRight className="w-2.5 h-2.5" /> +15% vs yesterday
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Cameras Online */}
-        <div className="bg-white border border-[#EAECF0] rounded-xl p-3 shadow-sm space-y-2 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-bold text-ink-muted leading-tight">Cameras Online</span>
-            <Camera className="w-3.5 h-3.5 text-blue-600" />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xl font-black text-ink">{onlineCameras} / {(devices || []).length}</div>
-            <div className="flex items-center gap-0.5 text-[9px] font-extrabold text-emerald-600">
-              <CheckCircle2 className="w-2.5 h-2.5" /> 100% operational
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 2. Detection Charts (Doughnut, Line) ────────────────── */}
-      <div data-tour="charts" className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        {/* Detection Statistics (Doughnut Chart) */}
-        <div className="bg-white border border-[#EAECF0] rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-bold text-ink-muted uppercase tracking-wider">Detection Statistics</h3>
-            <Activity className="w-3.5 h-3.5 text-ink-subtle" />
-          </div>
-          <div className="h-40 relative">
+      <div data-tour="charts" className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Card>
+          <h2 className="text-base font-semibold text-ink mb-3">Incident outcomes</h2>
+          <div className="h-44 relative">
             <Doughnut data={doughnutData} options={doughnutOptions} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-5">
-              <span className="text-xl font-black text-ink">{incidents.length}</span>
-              <span className="text-[9px] text-ink-muted uppercase font-bold tracking-widest">Total</span>
-            </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Elephant Detection Trend (Line Chart) */}
-        <div className="bg-white border border-[#EAECF0] rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-bold text-ink-muted uppercase tracking-wider">Elephant Detection Trend</h3>
-            <span className="text-[9px] font-extrabold text-[#D92D20] bg-red-50 border border-red-100 px-2 py-0.5 rounded">24h Telemetry</span>
+        <Card>
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="text-base font-semibold text-ink">Detections, last 24 hours</h2>
+            <span className="text-sm text-ink-muted">
+              {peak ? `Busiest: ${peak.window} (${peak.count})` : 'None in the last 24 hours'}
+            </span>
           </div>
-          <div className="h-32">
+          <div className="h-44">
             <Line data={trendData} options={trendOptions} />
           </div>
-          <div className="text-[10px] text-ink-muted font-bold text-center mt-2 flex items-center justify-center gap-1">
-            <Clock className="w-3.5 h-3.5 text-[#D92D20]" />
-            Peak Activity: <span className="text-[#D92D20] font-black">18:00 - 22:00 (Evening Transit)</span>
-          </div>
-        </div>
-
+        </Card>
       </div>
 
-      {/* ── 5. Recent Elephant Incidents Table & 6. Activity Timeline ───────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Recent Elephant Incidents Table */}
-        <div data-tour="recent-incidents" className="lg:col-span-2 bg-white border border-[#EAECF0] rounded-xl p-4 shadow-sm space-y-3 flex flex-col">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-extrabold text-ink">Recent Elephant Incidents</h2>
-              <p className="text-[11px] text-ink-muted">Live incoming incidents registered across buffer zones and highways.</p>
-            </div>
-            <Link to="/incidents" className="text-xs font-bold text-brand hover:underline flex items-center gap-1">
-              View All Incidents →
-            </Link>
+        <Card padded={false} data-tour="recent-incidents" className="lg:col-span-2 flex flex-col">
+          <div className="flex items-baseline justify-between gap-3 px-4 py-3 border-b border-line">
+            <h2 className="text-base font-semibold text-ink">Recent incidents</h2>
+            <Link to="/incidents" className="text-sm font-medium text-brand hover:underline">View all</Link>
           </div>
 
-          <div className="overflow-x-auto border border-[#EAECF0] rounded-lg flex-1">
-            {incidents.length === 0 ? (
-              <div className="p-6 text-center text-xs text-ink-muted">No recent elephant incidents. All road corridors clear.</div>
-            ) : (
-              <table className="w-full text-left border-collapse text-xs">
+          {recent.length === 0 ? (
+            <p className="p-6 text-sm text-ink-muted">No incidents. All monitored corridors are clear.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-surface-alt border-b border-[#EAECF0] text-ink-muted font-bold text-[10.5px] uppercase tracking-wider">
-                    <th className="py-2.5 px-3">Time</th>
-                    <th className="py-2.5 px-3">Camera ID</th>
-                    <th className="py-2.5 px-3">Location</th>
-                    <th className="py-2.5 px-3">AI Confidence</th>
-                    <th className="py-2.5 px-3">Number of Elephants</th>
-                    <th className="py-2.5 px-3">Alert Status</th>
+                  <tr className="border-b border-line text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    <th className="px-4 py-2.5">Opened</th>
+                    <th className="px-4 py-2.5">Camera</th>
+                    <th className="px-4 py-2.5">Location</th>
+                    <th className="px-4 py-2.5">Confidence</th>
+                    {hasCounts && <th className="px-4 py-2.5">Count</th>}
+                    <th className="px-4 py-2.5">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line font-medium text-ink">
-                  {incidents.slice(0, 5).map((inc, i) => (
-                    <tr key={inc.incident_id || inc.id || i} className="hover:bg-surface-alt/60 transition-colors">
-                      <td className="py-2.5 px-3 font-mono text-ink-muted">{relativeTime(inc.opened_at)}</td>
-                      <td className="py-2.5 px-3 font-semibold text-brand flex items-center gap-1.5">
-                        <Camera className="w-3.5 h-3.5 text-blue-600" />
-                        {inc.device_id || 'cam_trap'}
-                      </td>
-                      <td className="py-2.5 px-3">{inc.zone_name || inc.zone_id}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="inline-flex items-center gap-1 font-bold text-[#D92D20]">
-                          {inc.confidence == null ? '—' : Math.round(inc.confidence <= 1 ? inc.confidence * 100 : inc.confidence)}%
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-ink">
-                        {inc.number_of_elephants || inc.data?.number_of_elephants || (inc.confidence > 85 ? 2 : 1)}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
-                          inc.status === 'ACTIVE' ? 'bg-red-50 text-[#D92D20] border border-red-100' :
-                          inc.status === 'OPERATOR_REVIEW' ? 'bg-amber-50 text-amber-800 border border-amber-100' :
-                          inc.status === 'EXPIRED' ? 'bg-gray-100 text-gray-500 border border-gray-200' :
-                          'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                        }`}>
-                          {mapStatusLabel(inc.status)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-line">
+                  {recent.map((inc, i) => {
+                    const conf = inc.confidence == null ? null : Math.round(inc.confidence <= 1 ? inc.confidence * 100 : inc.confidence)
+                    return (
+                      <tr key={inc.incident_id || inc.id || i} className="hover:bg-surface">
+                        <td className="px-4 py-3 text-ink-muted whitespace-nowrap">{relativeTime(inc.opened_at)}</td>
+                        <td className="px-4 py-3 text-ink">{inc.device_name || inc.device_id || '—'}</td>
+                        <td className="px-4 py-3 text-ink">{inc.zone_name || inc.zone || inc.zone_id || '—'}</td>
+                        <td className="px-4 py-3 tabular-nums text-ink">{conf == null ? '—' : `${conf}%`}</td>
+                        {hasCounts && <td className="px-4 py-3 tabular-nums text-ink">{countOf(inc) ?? '—'}</td>}
+                        <td className="px-4 py-3"><StatusBadge status={inc.status} /></td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </Card>
+
+        <Card padded={false} data-tour="activity" className="flex flex-col h-[22rem]">
+          <div className="px-4 py-3 border-b border-line shrink-0">
+            <h2 className="text-base font-semibold text-ink">Recent activity</h2>
+          </div>
+          <ul className="flex-1 overflow-y-auto divide-y divide-line">
+            {activityTimeline.length === 0 && (
+              <li className="px-4 py-6 text-sm text-ink-muted">No activity recorded yet.</li>
             )}
-          </div>
-        </div>
-
-        {/* 6. Activity Timeline */}
-        <div data-tour="activity" className="bg-white border border-[#EAECF0] rounded-xl p-4 shadow-sm flex flex-col h-[340px]">
-          <div className="flex items-center justify-between border-b border-[#EAECF0] pb-2 shrink-0">
-            <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[#D92D20]" /> Activity Timeline
-            </h3>
-            <span className="text-[9px] text-ink-muted font-mono bg-surface-alt px-1.5 py-0.5 rounded border border-line">Live Feed</span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 pt-3">
             {activityTimeline.map((item, idx) => {
               const Icon = item.icon
               return (
-                <div key={idx} className="flex gap-2.5 items-start text-xs relative">
-                  {/* Timeline vertical connector */}
-                  {idx < activityTimeline.length - 1 && (
-                    <span className="absolute left-[7.5px] top-[18px] bottom-[-18px] w-[1px] bg-[#EAECF0]"></span>
-                  )}
-                  
-                  {/* Timeline Dot/Icon */}
-                  <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 z-10 ${item.bg || 'bg-gray-100'}`}>
-                    <Icon className={`w-2.5 h-2.5 ${item.color || 'text-ink-subtle'}`} />
-                  </span>
-                  
-                  {/* Timeline content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-ink font-semibold leading-tight text-[11.5px]">{item.text}</p>
-                    <span className="text-[9px] text-ink-muted font-mono leading-none">{item.time}</span>
+                <li key={idx} className="flex gap-3 px-4 py-2.5">
+                  <Icon size={16} className={`mt-0.5 shrink-0 ${item.tone || 'text-ink-subtle'}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-ink">{item.text}</p>
+                    <span className="text-xs text-ink-muted tabular-nums">{item.time}</span>
                   </div>
-                </div>
+                </li>
               )
             })}
-          </div>
-        </div>
-
+          </ul>
+        </Card>
       </div>
 
+    </div>
     </div>
   )
 }

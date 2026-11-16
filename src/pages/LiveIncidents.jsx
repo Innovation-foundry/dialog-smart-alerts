@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import IncidentTable from '../components/incidents/IncidentTable.jsx'
 import IncidentDetail from '../components/incidents/IncidentDetail.jsx'
 import ToastStack from '../components/common/Toast.jsx'
+import { PageHeader } from '../components/ui'
 import { useIncidents } from '../hooks/useIncidents.js'
 import { useIncidentStream } from '../hooks/useIncidentStream.js'
 import { useToast } from '../hooks/useToast.js'
@@ -51,9 +52,13 @@ export default function LiveIncidents() {
     <div className="flex h-full overflow-hidden">
       {/* Incident table */}
       <div data-tour="incident-table" className="flex flex-col overflow-hidden flex-1">
+        <PageHeader
+          title="Live Incidents"
+          description="Open incidents, most severe first. Select one to see its detail and respond."
+        />
         {error && (
           <div className="px-4 py-2 bg-sev-critical/10 text-sev-critical text-sm border-b border-line">
-            Failed to load incidents. <button onClick={() => window.location.reload()} className="underline">Retry</button>
+            Can't reach the alerting backend — this list may be missing incidents or out of date. Retrying every few seconds.
           </div>
         )}
         <IncidentTable

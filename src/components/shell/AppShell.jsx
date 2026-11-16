@@ -5,7 +5,6 @@ import NavSidebar from './NavSidebar.jsx'
 
 export default function AppShell() {
   const [muteAlerts, setMuteAlerts] = useState(false)
-  const [streamStatus] = useState('live')
   const audioCtxRef = useRef(null)
 
   function playCriticalCue() {
@@ -32,7 +31,6 @@ export default function AppShell() {
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <TopBar
-        streamStatus={streamStatus}
         muteAlerts={muteAlerts}
         onToggleMute={() => setMuteAlerts(m => !m)}
         onToggleSidebar={() => setSidebarOpen(s => !s)}

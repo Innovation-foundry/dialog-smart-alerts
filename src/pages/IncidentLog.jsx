@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import IncidentTable from '../components/incidents/IncidentTable.jsx'
 import IncidentDetail from '../components/incidents/IncidentDetail.jsx'
+import { PageHeader } from '../components/ui'
 
 const POLL_INTERVAL_MS = 15000
 
@@ -35,15 +36,13 @@ export default function IncidentLog() {
   return (
     <div className="flex h-full overflow-hidden">
       <div className="flex flex-col overflow-hidden flex-1">
-        <div className="px-4 py-3 border-b border-line bg-surface shrink-0">
-          <h1 className="text-sm font-semibold text-ink">Incident Log</h1>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Incidents (active or closed) auto-archived off the dashboard after 3 hours open.
-          </p>
-        </div>
+        <PageHeader
+          title="Incident Log"
+          description="Incidents, active or closed, move here from the dashboard after 3 hours open."
+        />
         {error && (
           <div className="px-4 py-2 bg-sev-critical/10 text-sev-critical text-sm border-b border-line">
-            Failed to load incident log. <button onClick={() => window.location.reload()} className="underline">Retry</button>
+            Can't reach the alerting backend — this log may be out of date. Retrying automatically.
           </div>
         )}
         <IncidentTable

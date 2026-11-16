@@ -1,84 +1,399 @@
-import { useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Wifi, WifiOff, Camera, Thermometer, Plane, Radio, Activity, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, MapPin, Map as MapIcon, Table as TableIcon, Power, PowerOff } from 'lucide-react'
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import { useApi } from '../hooks/useApi.js'
-import { Button } from '../components/ui'
-import { relativeTime } from '../lib/format.js'
+import { relativeTime, absoluteTime } from '../lib/format.js'
+import {
+  PageHeader, Button, Badge, StatusDot, StatusBadge, Table, Drawer, SegmentedControl,
+  Field, Input, Select, SaveBar, ConfirmDialog, ErrorBanner, Banner,
+} from '../components/ui'
 
-const TYPE_ICON = {
-  camera: Camera, thermal: Thermometer, drone: Plane,
-  acoustic: Radio, pressure_pad: Activity, manual: Activity,
+const BLANK = {
+  name: '', type: 'camera', zone_id: '', use_case_id: '',
+  lat: null, lng: null, online: false, api_key: '',
+  station_id: '', entity_id: '',
 }
 
-export default function Devices() {
-  const navigate = useNavigate()
-  const { data: devices, loading, fetchAll } = useApi('/api/devices')
-  const { data: zones } = useApi('/api/zones')
+const DEVICE_TYPES = ['camera', 'thermal', 'drone', 'pressure_pad', 'acoustic', 'manual', 'siren', 'gate']
+// Devices that act on the world (sirens, gates) rather than report to it.
+const ACTUATOR_TYPES = ['siren', 'gate']
+const isActuator = (d) => ACTUATOR_TYPES.includes(d.type)
 
-  // Poll so heartbeats/online status stay fresh
+function MapClickHandler({ onPick }) {
+  useMapEvents({ click(e) { onPick(e.latlng) } })
+  return null
+}
+
+function pinIcon(online) {
+  const fill = online ? '#12B76A' : '#667085'
+  return L.divIcon({
+    html: `<svg viewBox="0 0 24 24" width="22" height="22" fill="${fill}" xmlns="http://www.w3.org/2000/svg">
+             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+           </svg>`,
+    className: '', iconSize: [22, 22], iconAnchor: [11, 22],
+  })
+}
+
+const num = (v) => (v === '' ? null : parseFloat(v))
+
+export default function Devices() {
+  const { data: devices, loading, error, create, update, remove, fetchAll } = useApi('/api/devices')
+  const { data: useCases }  = useApi('/api/use-cases')
+  const { data: zones }     = useApi('/api/zones')
+
+  const [params, setParams] = useSearchParams()
+  const kind = ['sensors', 'actuators'].includes(params.get('show')) ? params.get('show') : 'all'
+  const setKind = (k) => setParams(k === 'all' ? {} : { show: k }, { replace: true })
+
+  const [slideOpen, setSlideOpen]   = useState(false)
+  const [editing, setEditing]       = useState(null)
+  const [form, setForm]             = useState(BLANK)
+  const [saving, setSaving]         = useState(false)
+  const [saveError, setSaveError]   = useState(null)
+  const [confirmDel, setConfirmDel] = useState(null)
+  const [confirmState, setConfirmState] = useState(null)
+  const [viewMode, setViewMode]     = useState('table')
+  const [pickingMap, setPickingMap] = useState(false)
+  // The real key only ever exists in a response at creation/regeneration —
+  // no endpoint can fetch it back out afterward, so this is its one showing.
+  const [revealedKey, setRevealedKey] = useState(null)
+
+  // Keep heartbeats / online status fresh.
   useEffect(() => {
     const t = setInterval(fetchAll, 10000)
     return () => clearInterval(t)
   }, [fetchAll])
 
-  const zoneName = useMemo(() => {
-    const m = {}; zones.forEach(z => { m[z.id] = z.name }); return m
-  }, [zones])
+  function openNew()     { setEditing(null); setForm(BLANK); setSaveError(null); setSlideOpen(true) }
+  function openEdit(dev) { setEditing(dev);  setForm({ ...dev }); setSaveError(null); setSlideOpen(true) }
+  function close()       { setSlideOpen(false); setPickingMap(false) }
+  function set(k, v)     { setForm(f => ({ ...f, [k]: v })) }
+
+  function handleMapPick(latlng) {
+    set('lat', parseFloat(latlng.lat.toFixed(6)))
+    set('lng', parseFloat(latlng.lng.toFixed(6)))
+    setPickingMap(false)
+  }
+
+  async function save() {
+    if (!form.name.trim())     { setSaveError('Name is required'); return }
+    if (!form.use_case_id)     { setSaveError('Use Case is required'); return }
+    if (!form.zone_id)         { setSaveError('Zone is required'); return }
+    setSaving(true); setSaveError(null)
+    try {
+      // The list/get endpoints only ever return a masked api_key preview
+      // (e.g. "ab12…ff90") — never resubmit it on edit, or we'd overwrite
+      // the device's real key with that masked placeholder.
+      const { api_key, ...payload } = form
+      if (editing) {
+        await update(editing.id, payload)
+      } else {
+        const created = await create(payload)
+        if (created?.api_key) setRevealedKey(created.api_key)
+      }
+      close()
+    } catch (e) {
+      setSaveError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function regenerateKey() {
+    if (!editing) return
+    setSaving(true); setSaveError(null)
+    try {
+      const res = await fetch(`/api/devices/${editing.id}/regenerate-key`, { method: 'POST' })
+      if (!res.ok) throw new Error(await res.text())
+      const { api_key } = await res.json()
+      await fetchAll()
+      close()
+      setRevealedKey(api_key)
+    } catch (e) {
+      setSaveError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Sends ONLY the changed field — the list carries a masked api_key preview,
+  // and writing the whole record back would overwrite the real key.
+  async function applyState(id, target) {
+    try { await update(id, { state: target }); fetchAll() } finally { setConfirmState(null) }
+  }
 
   const onlineCount = devices.filter(d => d.online).length
+  const counts = useMemo(() => ({
+    all: devices.length,
+    sensors: devices.filter(d => !isActuator(d)).length,
+    actuators: devices.filter(isActuator).length,
+  }), [devices])
+  const rows = kind === 'sensors' ? devices.filter(d => !isActuator(d))
+    : kind === 'actuators' ? devices.filter(isActuator) : devices
+
+  const filteredZones = zones.filter(z => !form.use_case_id || z.use_case_id === form.use_case_id)
+
+  const columns = [
+    { key: 'name', label: 'Device',
+      render: row => (
+        <div>
+          <div className="font-medium text-ink">{row.name}</div>
+          <div className="text-xs text-ink-muted capitalize">
+            {(row.type || '').replace('_', ' ')}
+            {row.external_id && <span className="font-mono"> · {row.external_id}</span>}
+          </div>
+        </div>
+      ),
+    },
+    { key: 'zone_id', label: 'Zone',
+      render: row => {
+        const z = zones.find(z => z.id === row.zone_id)
+        return <span className="text-sm text-ink-muted">{z?.name || row.zone_id || '—'}</span>
+      },
+    },
+    { key: 'use_case_id', label: 'Use Case',
+      render: row => {
+        const uc = useCases.find(u => u.id === row.use_case_id)
+        return uc
+          ? <span className="text-sm font-medium" style={{ color: uc.color }}>{uc.name}</span>
+          : <span className="text-sm text-ink-muted">{row.use_case_id || '—'}</span>
+      },
+    },
+    { key: 'online', label: 'Status', render: row => <StatusDot online={row.online} /> },
+    { key: 'last_seen', label: 'Last Seen',
+      render: row => (
+        <span className="text-sm text-ink-muted" title={row.last_seen ? absoluteTime(row.last_seen) : ''}>
+          {row.last_seen ? relativeTime(row.last_seen) : 'Never'}
+        </span>
+      ) },
+    ...(kind === 'actuators' ? [{
+      key: 'state', label: 'State / override',
+      render: row => {
+        const state = row.state || (row.online ? 'OFF' : 'OFFLINE')
+        return (
+          <div className="flex items-center gap-2">
+            <StatusBadge status={state} />
+            <Button variant="secondary" disabled={state === 'ON' || state === 'OFFLINE'}
+                    onClick={() => setConfirmState({ id: row.id, name: row.name, target: 'ON' })}>
+              <Power size={12} /> On
+            </Button>
+            <Button variant="secondary" disabled={state !== 'ON' && state !== 'MANUAL_OVERRIDE'}
+                    onClick={() => setConfirmState({ id: row.id, name: row.name, target: 'OFF' })}>
+              <PowerOff size={12} /> Off
+            </Button>
+          </div>
+        )
+      },
+    }] : []),
+    { key: 'api_key', label: 'API Key',
+      render: row => (
+        <code className="text-xs font-mono text-ink-muted bg-surface px-1.5 py-0.5 rounded"
+              title="Shown once at creation/regeneration — not retrievable afterward">{row.api_key}</code>
+      ),
+    },
+  ]
 
   return (
-    <div className="p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Devices</h1>
-          <p className="text-sm text-ink-muted mt-0.5">
-            {onlineCount}/{devices.length} online · live from device registry
-          </p>
-        </div>
-        <Button onClick={() => navigate('/admin/devices')}><Plus size={14} /> Add / manage devices</Button>
+    <div className="flex flex-col h-full overflow-hidden">
+      <PageHeader
+        title="Devices"
+        description={`${onlineCount} of ${devices.length} online · cameras, sensors, sirens and gates`}
+        action={
+          <>
+            <SegmentedControl
+              options={[{ value: 'table', label: 'Table', icon: TableIcon }, { value: 'map', label: 'Map', icon: MapIcon }]}
+              value={viewMode} onChange={setViewMode} />
+            <Button onClick={openNew}><Plus size={14} /> New device</Button>
+          </>
+        }
+      />
+
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0 flex-wrap">
+        {[['all', 'All'], ['sensors', 'Sensors'], ['actuators', 'Sirens & gates']].map(([k, label]) => (
+          <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs transition-colors
+                    ${kind === k ? 'bg-ink text-white border-ink' : 'bg-white border-line text-ink hover:bg-surface-alt'}`}>
+            {label} <span className="font-semibold">{counts[k]}</span>
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-ink-muted">{rows.length} shown</span>
       </div>
 
-      {loading && devices.length === 0 && <p className="text-sm text-ink-muted">Loading…</p>}
+      <div className="flex-1 overflow-auto">
+        {kind === 'actuators' && (
+          <div className="p-4 pb-0">
+            <Banner variant="warning" title="Overrides are recorded, not sent to the hardware">
+              Turning a siren or gate On or Off here updates its state in the platform only. No command reaches the
+              physical unit yet, so do not rely on this to operate equipment.
+            </Banner>
+          </div>
+        )}
+        {loading && devices.length === 0 && <p className="px-6 py-4 text-sm text-ink-muted">Loading…</p>}
+        {error && <p className="px-6 py-4 text-sm text-sev-critical">Couldn't load devices: {error}</p>}
 
-      <table data-tour="device-table" className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-surface-alt border-b border-line">
-            {['Device ID', 'Name', 'Type', 'Zone', 'Last Seen', 'Status'].map(h => (
-              <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {devices.map(d => {
-            const Icon = TYPE_ICON[d.type] || Camera
-            return (
-              <tr key={d.id} className="hover:bg-surface">
-                <td className="px-4 py-3 font-mono text-xs text-ink-muted">{d.id}</td>
-                <td className="px-4 py-3 text-ink">{d.name}</td>
-                <td className="px-4 py-3 text-ink-muted">
-                  <span className="inline-flex items-center gap-1.5 capitalize">
-                    <Icon size={13} /> {(d.type || '').replace('_', ' ')}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-ink-muted">{zoneName[d.zone_id] || d.zone_id || '—'}</td>
-                <td className="px-4 py-3 text-ink-muted">{d.last_seen ? relativeTime(d.last_seen) : 'Never'}</td>
-                <td className="px-4 py-3">
-                  <span className={`flex items-center gap-1.5 text-xs font-medium ${d.online ? 'text-sev-low' : 'text-sev-critical'}`}>
-                    {d.online ? <Wifi size={13} /> : <WifiOff size={13} />}
-                    {d.online ? 'Online' : 'Offline'}
-                  </span>
-                </td>
-              </tr>
-            )
-          })}
-          {!loading && devices.length === 0 && (
-            <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted text-sm">
-              No devices registered. Use “Add / manage devices” above, or Configuration → Device Registry.
-            </td></tr>
+        {!(loading && devices.length === 0) && viewMode === 'table' && (
+          <div data-tour="device-table">
+            <Table columns={columns} rows={rows} onEdit={openEdit} onDelete={setConfirmDel}
+                   emptyMessage={devices.length === 0
+                     ? 'No devices registered. Add a device to start ingesting events.'
+                     : 'No devices of this kind.'} />
+          </div>
+        )}
+
+        {!(loading && devices.length === 0) && viewMode === 'map' && (
+          <div className="h-full min-h-[420px]">
+            <MapContainer center={[6.35, 81.42]} zoom={11} style={{ height: '100%', width: '100%' }}>
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {rows.map(dev => dev.lat && dev.lng ? (
+                <Marker key={dev.id} position={[dev.lat, dev.lng]} icon={pinIcon(dev.online)}>
+                  <Popup>
+                    <div className="text-xs min-w-[160px]">
+                      <div className="font-semibold">{dev.name}</div>
+                      <div className="text-gray-500 capitalize">{dev.type} · {dev.online ? 'Online' : 'Offline'}</div>
+                      <button onClick={() => openEdit(dev)} className="mt-2 text-blue-600 underline text-xs">Edit</button>
+                    </div>
+                  </Popup>
+                </Marker>
+              ) : null)}
+            </MapContainer>
+          </div>
+        )}
+      </div>
+
+      <Drawer open={slideOpen} onClose={close} title={editing ? 'Edit Device' : 'Register Device'}>
+        <div className="space-y-4">
+          <ErrorBanner error={saveError} />
+
+          <Field label="Device Name" required>
+            <Input value={form.name} onChange={e => set('name', e.target.value)}
+                   placeholder="e.g. Camera Trap – B43 North Gate" />
+          </Field>
+
+          <Field label="Type" required>
+            <Select value={form.type} onChange={e => set('type', e.target.value)}>
+              {DEVICE_TYPES.map(t => (
+                <option key={t} value={t} className="capitalize">{t.replace('_', ' ')}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Station ID / Entity ID"
+                 hint={form.station_id && form.entity_id
+                   ? `MQTT identity (external_id): ${form.station_id}_${form.entity_id}`
+                   : 'The station_id and entity_id the device sends over MQTT — together they form its external_id.'}>
+            <div className="flex items-center gap-2">
+              <Input value={form.station_id || ''} onChange={e => set('station_id', e.target.value.trim())}
+                     placeholder="st_05" className="flex-1" />
+              <span className="text-ink-muted">_</span>
+              <Input value={form.entity_id || ''} onChange={e => set('entity_id', e.target.value.trim())}
+                     placeholder="cam_02" className="flex-1" />
+            </div>
+          </Field>
+          {editing && (
+            <Field label="Status" hint="Driven automatically by device heartbeats — not editable here.">
+              <StatusDot online={form.online} />
+            </Field>
           )}
-        </tbody>
-      </table>
+
+          <Field label="Use Case" required>
+            <Select value={form.use_case_id} onChange={e => { set('use_case_id', e.target.value); set('zone_id', '') }}>
+              <option value="">Select use case…</option>
+              {useCases.map(uc => <option key={uc.id} value={uc.id}>{uc.name}</option>)}
+            </Select>
+          </Field>
+
+          <Field label="Zone" required>
+            <Select value={form.zone_id} onChange={e => set('zone_id', e.target.value)}
+                    disabled={!form.use_case_id}>
+              <option value="">Select zone…</option>
+              {filteredZones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+            </Select>
+          </Field>
+
+          <Field label="Location (lat, lng)" hint="Click 'Pick on map' to set coordinates visually">
+            <div className="flex items-center gap-2">
+              <Input value={form.lat ?? ''} onChange={e => set('lat', num(e.target.value))}
+                     placeholder="Lat" type="number" step="0.0001" className="flex-1" />
+              <Input value={form.lng ?? ''} onChange={e => set('lng', num(e.target.value))}
+                     placeholder="Lng" type="number" step="0.0001" className="flex-1" />
+            </div>
+            <button type="button" onClick={() => setPickingMap(p => !p)}
+                    className="mt-2 text-xs text-brand hover:underline flex items-center gap-1">
+              <MapPin size={11} />
+              {pickingMap ? 'Click the map below to pick location' : 'Pick on map'}
+            </button>
+          </Field>
+
+          {pickingMap && (
+            <div className="rounded-lg overflow-hidden border border-line" style={{ height: 240 }}>
+              <MapContainer center={[6.35, 81.42]} zoom={11} style={{ height: '100%' }}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <MapClickHandler onPick={handleMapPick} />
+                {form.lat && form.lng && (
+                  <Marker position={[form.lat, form.lng]} icon={pinIcon(true)} />
+                )}
+              </MapContainer>
+            </div>
+          )}
+
+          <Field label="API Key" hint={editing
+            ? 'Only ever shown once, at creation/regeneration — not displayed here. Regenerate to issue (and see) a new one.'
+            : 'Auto-generated on save. Devices use this to authenticate events.'}>
+            {editing ? (
+              <Button type="button" variant="secondary" onClick={regenerateKey}>Regenerate</Button>
+            ) : (
+              <Input value="Auto-generated on save" disabled />
+            )}
+          </Field>
+
+          <SaveBar onSave={save} onCancel={close} saving={saving} />
+        </div>
+      </Drawer>
+
+      <ConfirmDialog
+        open={!!confirmDel}
+        title="Delete device?"
+        confirmLabel="Delete"
+        danger
+        message={`Delete device "${confirmDel?.name}"? Events from this device will no longer be processed.`}
+        onConfirm={async () => { await remove(confirmDel.id); setConfirmDel(null) }}
+        onCancel={() => setConfirmDel(null)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title={`Record state — ${confirmState?.name}`}
+        message={`Record ${confirmState?.name} as ${confirmState?.target}? This changes the state shown in the platform. It does not send a command to the physical unit.`}
+        confirmLabel={`Record ${confirmState?.target}`}
+        danger={confirmState?.target === 'OFF'}
+        onConfirm={() => applyState(confirmState.id, confirmState.target)}
+        onCancel={() => setConfirmState(null)}
+      />
+
+      {revealedKey && (
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-modal max-w-md w-full p-5 space-y-3">
+            <h3 className="font-semibold text-ink">Device API key</h3>
+            <p className="text-sm text-ink-muted">
+              Copy this now — it won't be shown again. Give it to the device operator.
+            </p>
+            <code className="block text-xs font-mono bg-surface-alt px-3 py-2 rounded break-all">
+              {revealedKey}
+            </code>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="secondary" onClick={() => navigator.clipboard?.writeText(revealedKey)}>
+                Copy
+              </Button>
+              <Button type="button" onClick={() => setRevealedKey(null)}>Done</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

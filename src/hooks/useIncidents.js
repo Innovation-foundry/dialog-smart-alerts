@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { MOCK_INCIDENTS } from '../mock/incidents.js'
+import { useState, useEffect, useCallback } from 'react'
 import { useDemoCollection, isDemoActive, demoUpdate, demoRemove } from '../tour/demoStore.js'
 
 const POLL_INTERVAL_MS = 5000   // re-fetch every 5 s as a reliable fallback
@@ -14,32 +13,22 @@ export function useIncidents() {
   const [incidents, setIncidents] = useState([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState(null)
-  const usingMock = useRef(false)
 
-  // ── Initial load ──────────────────────────────────────────────────────────
+  // ── Load + poll every 5 s ─────────────────────────────────────────────────
+  // Polling guarantees the UI stays in sync even when SSE frames are missed.
+  // If the backend can't be reached the page says so (`error`) and keeps the
+  // last real data — it never substitutes sample incidents — and the same
+  // poll clears the error as soon as the backend answers again.
   useEffect(() => {
-    fetchIncidents()
-      .then(data => { setIncidents(data); setLoading(false) })
-      .catch(() => {
-        // Backend not running — fall back to mock data silently
-        usingMock.current = true
-        setIncidents(MOCK_INCIDENTS)
-        setLoading(false)
-      })
-  }, [])
-
-  // ── Polling fallback: refresh every 5 s ───────────────────────────────────
-  // Guarantees the UI stays in sync even when SSE frames are missed.
-  useEffect(() => {
-    if (usingMock.current) return   // no backend — don't poll
-    const id = setInterval(() => {
+    let cancelled = false
+    const load = () =>
       fetchIncidents()
-        .then(data => {
-          setIncidents(data)
-        })
-        .catch(() => {})  // silently ignore transient failures
-    }, POLL_INTERVAL_MS)
-    return () => clearInterval(id)
+        .then(data => { if (!cancelled) { setIncidents(data); setError(null) } })
+        .catch(e => { if (!cancelled) setError(e?.message || 'unreachable') })
+        .finally(() => { if (!cancelled) setLoading(false) })
+    load()
+    const id = setInterval(load, POLL_INTERVAL_MS)
+    return () => { cancelled = true; clearInterval(id) }
   }, [])
 
   const applyEvent = useCallback((event) => {

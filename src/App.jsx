@@ -10,14 +10,12 @@ import IncidentLog from './pages/IncidentLog.jsx'
 import GIS from './pages/GIS.jsx'
 import RoadSigns from './pages/RoadSigns.jsx'
 import Devices from './pages/Devices.jsx'
-import HardwareUnits from './pages/HardwareUnits.jsx'
 import Simulator from './pages/Simulator.jsx'
 
 // Admin – configuration
 import AdminUseCases from './pages/admin/UseCases.jsx'
 import AdminRules from './pages/admin/Rules.jsx'
 import AdminStakeholders from './pages/admin/Stakeholders.jsx'
-import AdminDevices from './pages/admin/Devices.jsx'
 import AdminRoadSignBoards from './pages/admin/RoadSignBoards.jsx'
 
 // Admin – system
@@ -57,14 +55,15 @@ export default function App() {
           <Route path="/gis"        element={<Wrap><GIS /></Wrap>} />
           <Route path="/road-signs" element={<Wrap><RoadSigns /></Wrap>} />
           <Route path="/devices"    element={<Wrap><Devices /></Wrap>} />
-          <Route path="/hardware"   element={<Wrap><HardwareUnits /></Wrap>} />
+          {/* Hardware Units and the Device Registry were folded into Devices; old links still land there. */}
+          <Route path="/hardware"   element={<Navigate to="/devices?show=actuators" replace />} />
+          <Route path="/admin/devices" element={<Navigate to="/devices" replace />} />
           <Route path="/simulator"  element={<Wrap><Simulator /></Wrap>} />
 
           {/* Configuration admin */}
           <Route path="/admin/use-cases"    element={<Wrap><AdminUseCases /></Wrap>} />
           <Route path="/admin/rules"        element={<Wrap><AdminRules /></Wrap>} />
           <Route path="/admin/stakeholders" element={<Wrap><AdminStakeholders /></Wrap>} />
-          <Route path="/admin/devices"      element={<Wrap><AdminDevices /></Wrap>} />
           <Route path="/admin/road-signs"   element={<Wrap><AdminRoadSignBoards /></Wrap>} />
 
           {/* System admin */}

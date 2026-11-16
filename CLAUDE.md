@@ -50,7 +50,8 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
   returns liveness fields so the top-bar dot is green when healthy.
 
 ## Guided tour
-- Top-bar **Guided Tour** dropdown (and sidebar **Help**): Executive Tour, Full Tour, Live Narration.
+- Sidebar **Help** section: Executive Tour, Full Tour, Live Narration. (The top bar holds only identity,
+  one health indicator and the alert-sound switch.)
   Code in `src/tour/`: `steps.js` (both scripts: route, `data-tour` target, narration, scripted action),
   `TourProvider.jsx` (scripted overlay + `TOUR_OPTIONS`, mounted around `<Routes>`), `TourChrome.jsx`
   (shared spotlight + caption card), `narrator.js` (Web Speech, prefers soft female voices),
@@ -65,5 +66,5 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
 ## Current status / next step
 Setup Wizard rebuilt (`/setup`, 5 steps: Scenario → Sensors → Signs → Response → Review&Test),
 verified end-to-end for a **non-elephant** scenario via API replay (boards light, incident opens).
-Still local-only stubs (fast follow): Hardware Units, Escalation Policies, Templates; admin screens
+Still local-only stubs (fast follow): Escalation Policies, Templates (Hardware Units and the Device Registry now live inside the Devices page); admin screens
 still on the CrudShell shim (work, not yet redesigned). Docs in `docs/`.

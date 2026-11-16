@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents } from 're
 import L from 'leaflet'
 import { AlertTriangle, CheckCircle, WifiOff, Map, Crosshair, Plus } from 'lucide-react'
 import RoadSignCard, { SIGN_STATE } from '../components/roadsigns/RoadSignCard.jsx'
-import { SegmentedControl, Button, EmptyState } from '../components/ui'
+import { SegmentedControl, Button, EmptyState, PageHeader } from '../components/ui'
 import { useApi } from '../hooks/useApi.js'
 import { useIncidents } from '../hooks/useIncidents.js'
 import { relativeTime } from '../lib/format.js'
@@ -112,39 +112,35 @@ export default function RoadSigns() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-line bg-surface shrink-0">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-ink">Road Sign Boards</h1>
-            <p className="text-sm text-ink-muted mt-0.5">
-              {signs.length} LED boards · states light by proximity to live detections
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <div data-tour="sign-summary" className="flex items-center gap-3 flex-wrap">
-            {SUMMARY_ITEMS.map(({ state, label, Icon, color }) => (
-              <button
-                key={state}
-                onClick={() => setFilter(f => f === state ? 'ALL' : state)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors
-                  ${filterState === state ? 'bg-ink text-white border-ink' : `border-line ${color} hover:bg-surface-alt`}`}
-              >
-                <Icon size={13} />
-                <span className="font-semibold">{counts[state]}</span>
-                <span className="text-xs">{label}</span>
-              </button>
-            ))}
-            </div>
-
+      <PageHeader
+        title="Road Signs"
+        description={`${signs.length} LED boards · each lights by proximity to live detections`}
+        action={
+          <>
             <SegmentedControl
               options={[{ value: 'grid', label: 'Grid' }, { value: 'map', label: 'Map', icon: Map }]}
               value={viewMode} onChange={setViewMode} />
-
             <Button onClick={() => navigate('/admin/road-signs')}><Plus size={14} /> Add / manage boards</Button>
-          </div>
-        </div>
+          </>
+        }
+      />
+
+      {/* Filter row — same bar the incident tables use */}
+      <div data-tour="sign-summary" className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0 flex-wrap">
+        {SUMMARY_ITEMS.map(({ state, label, Icon, color }) => (
+          <button
+            key={state}
+            onClick={() => setFilter(f => f === state ? 'ALL' : state)}
+            aria-pressed={filterState === state}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs transition-colors
+              ${filterState === state ? 'bg-ink text-white border-ink' : `bg-white border-line ${color} hover:bg-surface-alt`}`}
+          >
+            <Icon size={13} />
+            <span className="font-semibold">{counts[state]}</span>
+            <span>{label}</span>
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-ink-muted">{filtered.length} of {enriched.length} boards</span>
       </div>
 
       <div className="flex flex-1 overflow-hidden">

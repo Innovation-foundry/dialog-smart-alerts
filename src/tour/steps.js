@@ -25,7 +25,7 @@ export const FULL_TOUR_STEPS = [
   },
   {
     id: 'status', route: '/', target: 'topbar-status', title: 'Live system status',
-    text: 'Up here, the live badge and the health indicator confirm that the platform is connected and processing in real time. ' +
+    text: 'Up here, the health indicator confirms that the platform is connected and processing in real time. It stays a quiet green dot, and spells out the problem if anything drops. ' +
           'The bell lets an operator switch the audible alert cue on or off.',
   },
   {
@@ -42,7 +42,7 @@ export const FULL_TOUR_STEPS = [
   },
   {
     id: 'activity', route: '/', target: 'activity', title: 'The story, as it happens',
-    text: 'The activity timeline tells the story as it unfolds: the camera detection, the AI confidence score, the incident being created, and the smart road signs being updated.',
+    text: 'The activity timeline tells the story as it unfolds: each camera detection with its AI confidence score, the incident being opened, and later its resolution.',
   },
   {
     id: 'charts', route: '/', target: 'charts', title: 'Patterns over time',

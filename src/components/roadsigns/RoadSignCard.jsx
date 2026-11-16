@@ -25,8 +25,8 @@ export default function RoadSignCard({ sign, derivedState, nearbyIncident, onSel
   return (
     <button
       onClick={onSelect}
-      className={`w-full text-left rounded-xl border-2 overflow-hidden transition-all focus:outline-none shadow-card
-        ${selected ? 'border-brand' : 'border-line hover:border-ink-muted'}`}
+      className={`w-full text-left rounded-lg border overflow-hidden transition-colors shadow-card focus-visible:ring-2 focus-visible:ring-brand
+        ${selected ? 'border-brand ring-1 ring-brand' : 'border-line hover:border-ink-subtle'}`}
     >
       {/* LED board panel */}
       <div className="relative flex flex-col items-center justify-center py-6 px-4 gap-3"
