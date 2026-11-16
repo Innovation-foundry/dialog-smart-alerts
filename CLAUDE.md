@@ -18,9 +18,10 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
 ## Conventions & gotchas
 - **lucide-react is pinned at 0.400.0** — many icon names DON'T exist and render `<undefined/>` which white-screens the page. Confirmed missing: `MonitorDot`, `TriangleAlert`, `LayoutGrid`, `Grid`; `CheckCircle2` is risky (use `CheckCircle`). Verify any new icon import.
 - Every route is wrapped in `ErrorBoundary` so a crash shows the error in-UI instead of a blank screen.
-- **Running the backend locally sends REAL SMS** (Ideabiz; `notifier.py` has a live URL + token as
-  defaults) and connects to the public HiveMQ broker (publishes sign commands). For local testing set
-  `IDEABIZ_API_URL=http://127.0.0.1:1/sms MQTT_BROKER_HOST=127.0.0.1 MQTT_BROKER_PORT=1`.
+- **SMS is real when `SMS_ENABLED=true`** (Ideabiz). The token comes only from `IDEABIZ_TOKEN` — there is
+  no default in code; without it sends are recorded as `failed`. The backend also connects to the public
+  HiveMQ broker by default (publishes sign commands). For local testing leave `SMS_ENABLED` unset and set
+  `MQTT_BROKER_HOST=127.0.0.1 MQTT_BROKER_PORT=1`.
 - Backend forces UTF-8 stdout (Windows cp1252 would crash on `→` in logs). `python server.py` has a `__main__` launcher.
 - Storage is JSON files via `data_store.py` (generic CRUD). `backend/data/`, `backend/uploads/`, `__pycache__/` are gitignored.
 - Frontend CRUD goes through `useApi(endpoint)`; admin pages share `components/admin/CrudShell.jsx`.

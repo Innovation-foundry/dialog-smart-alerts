@@ -21,7 +21,10 @@ def _now() -> str:
 def _render(template: str, ctx: dict) -> str:
     try:
         return template.format(**ctx)
-    except KeyError:
+    except (KeyError, IndexError, ValueError, AttributeError) as e:
+        # A malformed template (unknown field, "{0}", a stray "{") must never
+        # stop the alert going out — send it unrendered rather than not at all.
+        print(f"  [NOTIFY] message template could not be rendered ({type(e).__name__}: {e}) — sending as written")
         return template
 
 
@@ -146,15 +149,16 @@ async def dispatch(incident: dict, rule: dict, action_key: str, event: dict) -> 
             notif_id = f"NOTIF-{uuid.uuid4().hex[:8].upper()}"
             status = "simulated"
             if ch_type == "sms" and os.environ.get("SMS_ENABLED", "false").lower() == "true":
-                # Fetch credentials (defaulting to your production credentials)
+                # The token is a credential: it comes from the environment only,
+                # never from a default in source, and is never logged.
                 api_url = os.environ.get("IDEABIZ_API_URL", "https://ideabiz.lk/apicall/smsmessaging/v3/outbound/87798/requests")
-                api_token = os.environ.get("IDEABIZ_TOKEN", "aec2bd31-f3ba-38e0-a4ae-3785b6af1638")
+                api_token = os.environ.get("IDEABIZ_TOKEN", "").strip()
                 sender_port = os.environ.get("IDEABIZ_SENDER_PORT", "tel:87798")
                 sender_name = os.environ.get("IDEABIZ_SENDER_NAME", "smartalerts")
-                
-                # Diagnostic printing to verify environment variable configuration
-                print(f"  [SMS Debug] Using URL: {api_url} | Port: {sender_port} | Token: ...{api_token[-5:]}")
-                
+
+                print(f"  [SMS Debug] Using URL: {api_url} | Port: {sender_port} | "
+                      f"Token: {'set' if api_token else 'MISSING'}")
+
                 # Normalize to tel:+94... format required by Ideabiz (must include '+' sign)
                 clean_num = "".join(c for c in address if c.isdigit())
                 if clean_num.startswith("94"):
@@ -172,7 +176,10 @@ async def dispatch(incident: dict, rule: dict, action_key: str, event: dict) -> 
                     await asyncio.sleep(SMS_STAGGER_S)
                 sms_sent_count += 1
 
-                max_attempts = 4
+                # No token → nothing to send with. Record the failure on the
+                # notification (visible in the dashboard) instead of retrying.
+                max_attempts = 4 if api_token else 0
+                status = detail = "failed: IDEABIZ_TOKEN is not set"
                 for attempt in range(1, max_attempts + 1):
                     status, detail = await _send_sms(
                         api_url, api_token, recipient_num, sender_port, sender_name, sms_body, notif_id

@@ -300,7 +300,7 @@ def _redact_device(d: dict) -> dict:
     """Mask a device's api_key everywhere it would otherwise be broadcast
     passively (list/get/update/SSE) — there's no admin auth on these endpoints,
     so the full key must only ever go out through an action the caller took
-    deliberately (create, regenerate, or the explicit reveal endpoint below)."""
+    deliberately (create or regenerate — there is no way to read a key back)."""
     if not d or not d.get("api_key"):
         return d
     key = d["api_key"]
@@ -1076,6 +1076,10 @@ async def _run_rule_engine(event: dict, device: dict) -> dict | None:
 # LEGACY UPLOAD (camera demo)
 # ════════════════════════════════════════════════════════════════════════════
 
+UPLOAD_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
+UPLOAD_MAX_BYTES  = 15 * 1024 * 1024
+
+
 @app.post("/api/upload")
 async def legacy_upload(
     file: UploadFile = File(...),
@@ -1089,8 +1093,19 @@ async def legacy_upload(
     (defaults preserve the elephant demo) rather than hardcoded — so this page
     works for any use case once real classification feeds them. Tagged source=upload.
     """
-    contents = await file.read()
-    filename = f"{uuid.uuid4().hex}_{file.filename}"
+    # The client's filename is untrusted: keep nothing of it but an allow-listed
+    # image extension, so it can neither escape uploads/ ("../../x") nor plant
+    # an .html/.svg that /uploads would then serve from this origin.
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in UPLOAD_IMAGE_EXTS:
+        raise HTTPException(415, "Only image uploads are accepted "
+                                 f"({', '.join(sorted(UPLOAD_IMAGE_EXTS))})")
+    contents = await file.read(UPLOAD_MAX_BYTES + 1)
+    if len(contents) > UPLOAD_MAX_BYTES:
+        raise HTTPException(413, f"Image is larger than {UPLOAD_MAX_BYTES // (1024 * 1024)} MB")
+    if not contents:
+        raise HTTPException(400, "Uploaded file is empty")
+    filename = f"{uuid.uuid4().hex}{ext}"
     (UPLOADS_DIR / filename).write_bytes(contents)
     image_url = f"/uploads/{filename}"
 
@@ -1173,8 +1188,10 @@ async def simulate_scenario(req: Request):
         path        = path,
         object_type = body.get("object_type", "unknown"),
         confidence  = float(body.get("confidence", 90)),
-        step_seconds= float(body.get("step_seconds", 3)),
-        steps       = int(body.get("steps", 12)),
+        # Bounded: each step runs the full pipeline (incl. notifications), so an
+        # unbounded run is a flood of real alerts.
+        step_seconds= min(60.0, max(0.2, float(body.get("step_seconds", 3)))),
+        steps       = min(500, max(1, int(body.get("steps", 12)))),
     )
 
 
@@ -1197,17 +1214,6 @@ async def reset_simulation():
     broadcast("simulation_reset", result)
     print(f"[SIM] reset — {result}")
     return result
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# NOTIFICATIONS
-# ════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/notifications")
-async def list_notifications():
-    notifs = _list("notifications")
-    notifs.sort(key=lambda n: n.get("sent_at", ""), reverse=True)
-    return notifs[:200]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1260,7 +1266,9 @@ async def system_health():
         # loop are the current "workers"/"broker"; there is no VLM yet, so it is
         # reported as healthy (not degraded) rather than missing.
         "worker_live":      True,
-        "broker_ok":        True,
+        # Real MQTT connection state — detections and sign commands depend on it.
+        "broker_ok":        bool(getattr(app.state, "mqtt_client", None)
+                                 and app.state.mqtt_client.is_connected()),
         "vlm_ok":           True,
         "queue_depth":      0,
         "outbox_backlog":   0,
@@ -1384,8 +1392,16 @@ if DIST_DIR.exists() and (DIST_DIR / "assets").exists():
 
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str):
-    candidate = DIST_DIR / full_path
-    if candidate.exists() and candidate.is_file():
+    # Only ever serve files that really live inside dist/. The URL path is
+    # attacker-controlled ("/../backend/data/devices.json", "//etc/passwd"),
+    # so resolve it and check containment before touching the filesystem.
+    dist_root = DIST_DIR.resolve()
+    try:
+        candidate = (dist_root / full_path).resolve()
+        inside = candidate.is_relative_to(dist_root)
+    except (OSError, ValueError):
+        inside = False
+    if inside and candidate.is_file():
         return _FileResponse(str(candidate))
     index = DIST_DIR / "index.html"
     if index.exists():

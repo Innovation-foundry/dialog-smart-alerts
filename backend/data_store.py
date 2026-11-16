@@ -182,14 +182,27 @@ else:
             return []
         try:
             return json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as e:
+            # Don't let a damaged file pass silently as "no records": the next
+            # write would then persist that empty list over it. Keep a copy.
+            backup = p.with_suffix(f".corrupt-{uuid.uuid4().hex[:6]}.json")
+            try:
+                os.replace(p, backup)
+                print(f"[DATA_STORE] {p.name} is unreadable ({e}) — moved to {backup.name}, starting empty")
+            except OSError:
+                print(f"[DATA_STORE] {p.name} is unreadable ({e})")
             return []
 
     def _save(name: str, items: list):
-        _path(name).write_text(
+        # Write to a temp file and swap it in, so a crash mid-write can never
+        # leave a half-written (corrupt) store behind.
+        p = _path(name)
+        tmp = p.with_suffix(f".{uuid.uuid4().hex[:6]}.tmp")
+        tmp.write_text(
             json.dumps(items, indent=2, default=str, ensure_ascii=False),
             encoding="utf-8",
         )
+        os.replace(tmp, p)
 
     def get_all(name: str) -> list:
         return _load(name)

@@ -18,6 +18,9 @@ BASE_DIR = Path(__file__).parent
 UPLOADS_DIR = BASE_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
+# Largest base64 image accepted over MQTT (~15 MB decoded).
+MAX_IMAGE_B64_CHARS = 20 * 1024 * 1024
+
 
 def _assert_valid_image(img_bytes: bytes) -> None:
     """Raise if img_bytes isn't a complete, decodable image.
@@ -39,6 +42,14 @@ def _decode_and_save_b64_image(raw: str, filename_prefix: str) -> str:
     UPLOADS_DIR, and return its /uploads/... URL. Raises on invalid/corrupt
     input — callers decide the fallback (placeholder image, drop, etc.)."""
     import base64
+    import re
+
+    # Anyone can publish to the broker: cap the size before decoding, and keep
+    # only safe characters of the (payload-derived) prefix so it can never
+    # carry a path ("../../x") into the filename.
+    if len(raw) > MAX_IMAGE_B64_CHARS:
+        raise ValueError(f"image too large ({len(raw)} base64 chars, limit {MAX_IMAGE_B64_CHARS})")
+    filename_prefix = re.sub(r"[^A-Za-z0-9_-]+", "_", str(filename_prefix))[:80] or "img_mqtt"
 
     b64_data = raw.strip()
     if "," in b64_data:
@@ -115,8 +126,18 @@ class MQTTClientManager:
             self.client.loop_start()
             print(f"[MQTT] Started background client ({self.client._client_id}) — "
                   f"connecting to {self.broker_host}:{self.broker_port} ({auth})")
+            enforce = os.getenv("MQTT_ENFORCE_AUTH", "false").strip().lower() in ("1", "true", "yes", "on")
+            if not enforce:
+                print("[MQTT] WARNING: MQTT_ENFORCE_AUTH is off — detections for a registered device are "
+                      "accepted without a valid api_key. Set MQTT_ENFORCE_AUTH=true once gateways send keys.")
         except Exception as e:
             print(f"[MQTT] Failed to start MQTT client: {e}")
+
+    def is_connected(self) -> bool:
+        try:
+            return bool(self.client.is_connected())
+        except Exception:
+            return False
 
     def stop(self):
         self.client.loop_stop()
@@ -143,7 +164,7 @@ class MQTTClientManager:
             payload_str = msg.payload.decode('utf-8')
             payload = json.loads(payload_str)
 
-            api_key = payload.get("api_key")
+            api_key = payload.get("api_key") if isinstance(payload, dict) else None
 
             # 1. Status / heartbeat topics — device liveness, not a detection.
             # The gateway multiplexes one status message per camera on this topic,
@@ -151,6 +172,8 @@ class MQTTClientManager:
             # resolve the external_id the same way.
             if (msg.topic in (self.topic_status, self.topic_heartbeat)
                     or msg.topic.endswith(("/status", "/heartbeat"))):
+                if not isinstance(payload, dict):
+                    payload = {"status": str(payload)}
                 st, en = payload.get("station_id"), payload.get("entity_id") or payload.get("device_id")
                 if st and en:
                     device_id = f"{st}_{en}"
@@ -165,14 +188,23 @@ class MQTTClientManager:
                 return
 
             # Fields validation (supports both entity_id / device_id and alert / object_type)
-            station_id = payload.get("station_id") or "st_01"
-            entity_id = payload.get("entity_id") or payload.get("device_id") or "cam_04"
-            alert = payload.get("alert") or payload.get("object_type") or "elephant"
-            value = payload.get("value") if payload.get("value") is not None else payload.get("confidence", 90)
+            # No defaults: a message that doesn't say which camera saw what, and
+            # how confidently, is dropped — never turned into a detection for
+            # some assumed camera/object.
+            if not isinstance(payload, dict):
+                print(f"[MQTT] Ignored non-object JSON on '{msg.topic}'")
+                return
+            station_id = payload.get("station_id")
+            entity_id = payload.get("entity_id") or payload.get("device_id")
+            alert = payload.get("alert") or payload.get("object_type")
+            value = payload.get("value") if payload.get("value") is not None else payload.get("confidence")
             timestamp = payload.get("timestamp") or payload.get("received_at")
 
-            if not all([station_id, entity_id, alert, value is not None]):
-                print(f"[MQTT] Invalid payload structure: {payload_str}")
+            missing = [name for name, v in (("station_id", station_id), ("entity_id", entity_id),
+                                            ("alert", alert), ("value", value)) if v in (None, "")]
+            if missing:
+                print(f"[MQTT] Dropped alert on '{msg.topic}' — missing {', '.join(missing)}: "
+                      f"{payload_str[:300]}")
                 return
 
             # Normalize value to 0-100 confidence
@@ -422,7 +454,7 @@ class MQTTClientManager:
     async def process_status_update(self, device_id, payload, api_key=None):
         try:
             import data_store
-            from server import record_auth_attempt, mqtt_auth_enforced
+            from server import record_auth_attempt, mqtt_auth_enforced, verify_device_key
 
             # Resolve device by external_id or our own id (no fuzzy name match).
             all_devs = data_store.get_all("devices")
@@ -437,10 +469,18 @@ class MQTTClientManager:
                 print(f"[MQTT STATUS] ignored status from unregistered device '{device_id}'")
                 return
 
-            # Note a key mismatch for the audit trail, but never drop a status message.
-            if api_key and str(api_key) != str(device.get("api_key", "")):
+            # Same rule as detections: with MQTT_ENFORCE_AUTH on, a status message
+            # must carry the device's key or it is dropped (otherwise anyone on
+            # the broker could mark a device offline). In the grace period a
+            # wrong key is only noted for the audit trail.
+            enforced = mqtt_auth_enforced()
+            reason = verify_device_key(device, api_key)
+            if reason and (enforced or api_key):
                 record_auth_attempt(source="mqtt-status", external_id=device_id,
-                                    reason="bad_key", enforced=mqtt_auth_enforced())
+                                    reason=reason, enforced=enforced)
+            if reason and (enforced or reason == "disabled"):
+                print(f"[MQTT STATUS] rejected status from '{device_id}': {reason}")
+                return
 
             status_val = str(payload.get("status", "online")).lower()
             is_online = status_val not in ("offline", "disconnected", "down", "error", "dead")
