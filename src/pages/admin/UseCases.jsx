@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Plus, Zap } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Zap, Rocket } from 'lucide-react'
 import { useApi } from '../../hooks/useApi.js'
 import {
   PageHeader, Btn, Badge, Table, SlideOver,
@@ -10,6 +11,7 @@ const BLANK = { name: '', description: '', icon: 'alert', color: '#DA1F26', acti
 
 export default function UseCases() {
   const { data, loading, error, create, update, remove } = useApi('/api/use-cases')
+  const navigate = useNavigate()
   const [slideOpen, setSlideOpen]   = useState(false)
   const [editing, setEditing]       = useState(null)
   const [form, setForm]             = useState(BLANK)
@@ -63,7 +65,12 @@ export default function UseCases() {
       <PageHeader
         title="Use Case Templates"
         description="Define detection scenarios. Each use case groups devices, rules, and stakeholders."
-        action={<Btn onClick={openNew}><Plus size={14} /> New Use Case</Btn>}
+        action={
+          <>
+            <Btn variant="secondary" onClick={openNew}><Plus size={14} /> Add blank use case</Btn>
+            <Btn onClick={() => navigate('/setup')}><Rocket size={14} /> Set up a new scenario</Btn>
+          </>
+        }
       />
 
       {/* Info banner */}

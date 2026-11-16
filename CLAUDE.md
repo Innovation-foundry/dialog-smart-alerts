@@ -49,6 +49,13 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
   (no storms); confirmation ignores events consumed by closed incidents; `/api/system/health`
   returns liveness fields so the top-bar dot is green when healthy.
 
+## Setup entry points & readiness
+- The Setup Wizard (`/setup`, full-screen) has a permanent **"Set up new scenario"** button pinned at the bottom
+  of the sidebar (`data-tour="nav-setup"`) and **Use Cases → Set up a new scenario**.
+- Readiness warnings live in the top-bar health panel, not on the Dashboard: `/api/system/health` returns
+  `setup_issues` (no use case / devices / contact details / rules, SMS not live), each with the page that fixes
+  it. They turn the status dot amber ("Setup incomplete (n)"); hard failures (backend/MQTT/GIS) still win.
+
 ## Channels (outward notifications)
 - `backend/channels.py` + `/api/channels`, page `/admin/channels`. Channels = SMS, WhatsApp, Email; each holds
   the **default wording** for that channel and an on/off switch. Seeded by `channels.ensure()` at startup

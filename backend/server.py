@@ -1289,11 +1289,32 @@ async def sse_stream(request: Request):
 # SYSTEM HEALTH
 # ════════════════════════════════════════════════════════════════════════════
 
+def _setup_issues() -> list:
+    """Things that mean the platform can't yet do its job, each with the page that fixes it.
+    Computed from real data on every call — nothing is ticked by hand."""
+    issues = []
+    if not _list("use_cases"):
+        issues.append({"id": "no_use_case", "text": "No use case yet — nothing can raise an alert", "to": "/setup"})
+    if not _list("devices"):
+        issues.append({"id": "no_devices", "text": "No devices registered", "to": "/devices"})
+    if not any(c.get("address") for s in _list("stakeholders") for c in (s.get("channels") or [])):
+        issues.append({"id": "no_contacts", "text": "No stakeholder has contact details, so no one will be notified",
+                       "to": "/admin/stakeholders"})
+    if not _list("rules"):
+        issues.append({"id": "no_rules", "text": "No rules, so detections never become incidents", "to": "/admin/rules"})
+    sms = channels.delivery("sms")
+    if sms["mode"] != "live":
+        issues.append({"id": "sms_not_live", "text": "SMS delivery is not live — alerts are recorded, no texts are sent",
+                       "to": "/admin/channels"})
+    return issues
+
+
 @app.get("/api/system/health")
 async def system_health():
     incidents = _list("incidents")
     devices   = _list("devices")
     return {
+        "setup_issues":     _setup_issues(),
         "status":           "operational",
         # Liveness fields the dashboard health dot reads. The decay task and SSE
         # loop are the current "workers"/"broker"; there is no VLM yet, so it is

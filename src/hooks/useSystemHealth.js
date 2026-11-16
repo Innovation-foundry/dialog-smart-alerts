@@ -30,6 +30,7 @@ export function useSystemHealth() {
   const dot = reachable === null ? 'amber'
     : !reachable || !health ? 'red'
     : (health.worker_live === false || health.broker_ok === false || health.vlm_ok === false) ? 'red'
+    : health.setup_issues?.length > 0 ? 'amber'
     : (health.queue_depth > 50 || (health.fast_path_ms && health.slo_ms && health.fast_path_ms > health.slo_ms)) ? 'amber'
     : 'green'
 

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, AlertTriangle, Map, Camera, Users, GitBranch,
-  Monitor, Layers, Rocket, Send, PlayCircle, Globe, Clock,
+  Monitor, Layers, Send, Rocket, PlayCircle, Globe, Clock,
   Radio, Signpost,
 } from 'lucide-react'
 import { useTour } from '../../tour/TourProvider.jsx'
@@ -20,7 +20,6 @@ const NAV = [
 
   // Configuration
   { section: 'Configuration' },
-  { to: '/setup',             icon: Rocket,        label: 'Setup Wizard', tour: 'nav-setup' },
   { to: '/admin/use-cases',   icon: Layers,        label: 'Use Cases' },
   { to: '/admin/rules',       icon: GitBranch,     label: 'Rules Engine' },
   { to: '/admin/stakeholders',icon: Users,         label: 'Stakeholders' },
@@ -42,7 +41,8 @@ const NAV = [
 export default function NavSidebar() {
   const tour = useTour()
   return (
-    <nav data-tour="nav" className="w-56 bg-white border-r border-line flex flex-col gap-0.5 py-3 shrink-0 overflow-y-auto">
+    <nav data-tour="nav" className="w-56 bg-white border-r border-line flex flex-col shrink-0">
+      <div className="flex-1 overflow-y-auto flex flex-col gap-0.5 py-3">
       {NAV.map((item, i) => {
         if (item === null) return <div key={i} className="my-1" />
         if (item.section) {
@@ -97,6 +97,19 @@ export default function NavSidebar() {
           </NavLink>
         )
       })}
+      </div>
+
+      {/* The wizard is the main way to bring a new scenario online, so it stays pinned
+          at the bottom, always one click away however long the menu is. */}
+      <div className="shrink-0 p-3 border-t border-line">
+        <NavLink
+          to="/setup"
+          data-tour="nav-setup"
+          className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium bg-brand text-white hover:bg-brand-hover transition-colors shadow-sm"
+        >
+          <Rocket size={15} /> Set up new scenario
+        </NavLink>
+      </div>
     </nav>
   )
 }

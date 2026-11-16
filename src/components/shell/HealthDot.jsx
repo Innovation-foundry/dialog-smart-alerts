@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
 
 const DOT_COLOR = { green: 'bg-sev-low', amber: 'bg-sev-medium', red: 'bg-sev-critical' }
@@ -17,6 +18,7 @@ export default function HealthDot({ health, reachable, dot }) {
     : reachable === false ? 'Backend offline'
     : health?.broker_ok === false ? 'Message broker disconnected'
     : health?.gis_ok === false ? 'GIS unreachable'
+    : health?.setup_issues?.length > 0 ? `Setup incomplete (${health.setup_issues.length})`
     : null
 
   return (
@@ -65,6 +67,21 @@ export default function HealthDot({ health, reachable, dot }) {
                   )}
                   {health.active_incidents != null && (
                     <Row label="Active incidents" neutral text={String(health.active_incidents)} />
+                  )}
+                  {health.setup_issues?.length > 0 && (
+                    <div className="pt-3 mt-1 border-t border-line">
+                      <div className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Needs setup</div>
+                      <ul className="space-y-2">
+                        {health.setup_issues.map(i => (
+                          <li key={i.id}>
+                            <Link to={i.to} onClick={() => setOpen(false)}
+                                  className="block text-sm text-ink hover:text-brand">
+                              {i.text} <span className="text-brand">→</span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </>
               )}
