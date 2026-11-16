@@ -12,6 +12,7 @@ import urllib.request
 import asyncio
 from datetime import datetime, timezone
 import data_store
+import channels
 
 
 def _now() -> str:
@@ -123,13 +124,11 @@ async def dispatch(incident: dict, rule: dict, action_key: str, event: dict) -> 
         return []
 
     stakeholder_ids = action_block.get("notify_stakeholder_ids", [])
-    template = action_block.get(
-        "message_template",
-        "Alert [{severity}]: {object_type} detected in {zone_name} by {device_name}. "
-        "Confidence: {confidence}%. Location: {map_link} Incident: {incident_id}"
-    )
+    # Wording, most specific first: the rule's own message, then the channel's
+    # default wording (Channels page), then a built-in fallback. Rendered per
+    # channel below, since each channel can word the alert differently.
+    rule_template = (action_block.get("message_template") or "").strip()
     ctx = _build_context(incident, event)
-    message = _render(template, ctx)
 
     saved = []
     sms_sent_count = 0
@@ -143,12 +142,20 @@ async def dispatch(incident: dict, rule: dict, action_key: str, event: dict) -> 
             if not address:
                 continue
 
+            message = _render(
+                rule_template or channels.wording_for(ch_type) or channels.FALLBACK_WORDING, ctx
+            )
+
             # Unique per send: Ideabiz's clientCorrelator is a dedup key — reusing
             # the incident id across stakeholders/channels/re-notifies makes the
             # gateway treat every send after the first as a retry and drop it.
             notif_id = f"NOTIF-{uuid.uuid4().hex[:8].upper()}"
             status = "simulated"
-            if ch_type == "sms" and os.environ.get("SMS_ENABLED", "false").lower() == "true":
+            if not channels.is_enabled(ch_type):
+                # Channel switched off on the Channels page: record it, don't send.
+                status = "skipped: channel disabled"
+                print(f"  [{ch_type.upper()}] skipped (channel disabled) → {address}")
+            elif ch_type == "sms" and os.environ.get("SMS_ENABLED", "false").lower() == "true":
                 # The token is a credential: it comes from the environment only,
                 # never from a default in source, and is never logged.
                 api_url = os.environ.get("IDEABIZ_API_URL", "https://ideabiz.lk/apicall/smsmessaging/v3/outbound/87798/requests")

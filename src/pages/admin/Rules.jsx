@@ -14,7 +14,7 @@ const BLANK_ACTION = {
   create_incident:        true,
   incident_severity:      'HIGH',
   notify_stakeholder_ids: [],
-  message_template:       'Alert [{severity}]: {object_type} detected in {zone_name} by {device_name}. Confidence: {confidence}%. Incident: {incident_id}',
+  message_template:       '',   // blank = use each channel's default wording (Channels page)
 }
 
 const BLANK = {
@@ -124,8 +124,10 @@ function ActionBlock({ label, action, onChange, stakeholders }) {
         so rules don't actuate signs directly.
       </div>
 
-      <Field label="Message Template" hint="Placeholders: {severity} {object_type} {zone_name} {device_name} {confidence} {incident_id}">
-        <Textarea value={action.message_template || ''} onChange={e => set('message_template', e.target.value)} rows={3} />
+      <Field label="Message (optional)"
+             hint="Leave blank to use each channel's default wording (set on the Channels page). Anything written here is sent on every channel instead. Placeholders: {severity} {object_type} {zone_name} {device_name} {confidence} {road} {map_link} {incident_id}">
+        <Textarea value={action.message_template || ''} onChange={e => set('message_template', e.target.value)} rows={3}
+                  placeholder="Uses the channel's default wording" />
       </Field>
     </div>
   )

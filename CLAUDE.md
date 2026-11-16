@@ -49,6 +49,16 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
   (no storms); confirmation ignores events consumed by closed incidents; `/api/system/health`
   returns liveness fields so the top-bar dot is green when healthy.
 
+## Channels (outward notifications)
+- `backend/channels.py` + `/api/channels`, page `/admin/channels`. Channels = SMS, WhatsApp, Email; each holds
+  the **default wording** for that channel and an on/off switch. Seeded by `channels.ensure()` at startup
+  (never overwrites edits).
+- Wording priority in `notifier.dispatch`: the rule's own `message_template` > the channel's wording >
+  built-in fallback; rendered **per channel**. New rules leave the message blank so channels word it.
+- Only SMS really sends (Ideabiz, needs `SMS_ENABLED=true` + `IDEABIZ_TOKEN`); WhatsApp/Email are simulated
+  (logged + recorded). `delivery()` reports this and the UI shows Live vs Simulated.
+- No "test send" endpoint on purpose: the admin API has no auth yet, so it would let anyone trigger real SMS.
+
 ## Guided tour
 - Sidebar **Help** section: Executive Tour, Full Tour, Live Narration. (The top bar holds only identity,
   one health indicator and the alert-sound switch.)
@@ -66,5 +76,5 @@ The platform is **use-case driven** — the elephant scenario is seeded data, no
 ## Current status / next step
 Setup Wizard rebuilt (`/setup`, 5 steps: Scenario → Sensors → Signs → Response → Review&Test),
 verified end-to-end for a **non-elephant** scenario via API replay (boards light, incident opens).
-Still local-only stubs (fast follow): Escalation Policies, Templates (Hardware Units and the Device Registry now live inside the Devices page); admin screens
+Hidden from the sidebar until built (page remains, preview-only): Escalation Policies. Templates became the Channels page (Hardware Units and the Device Registry now live inside the Devices page); admin screens
 still on the CrudShell shim (work, not yet redesigned). Docs in `docs/`.

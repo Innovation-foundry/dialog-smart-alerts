@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, AlertTriangle, Map, Camera, Users, GitBranch,
-  Settings, Monitor, Layers, Bell, Rocket, PlayCircle, Globe, Clock,
+  Monitor, Layers, Rocket, Send, PlayCircle, Globe, Clock,
   Radio, Signpost,
 } from 'lucide-react'
 import { useTour } from '../../tour/TourProvider.jsx'
@@ -24,17 +24,13 @@ const NAV = [
   { to: '/admin/use-cases',   icon: Layers,        label: 'Use Cases' },
   { to: '/admin/rules',       icon: GitBranch,     label: 'Rules Engine' },
   { to: '/admin/stakeholders',icon: Users,         label: 'Stakeholders' },
+  { to: '/admin/channels',    icon: Send,          label: 'Channels' },
   { to: '/admin/road-signs',  icon: Signpost,      label: 'Sign Board Registry' },
 
   null, // divider
 
-  // System
-  { section: 'System' },
-  // `preview` = the page exists but is not wired to the platform yet (see its banner).
-  { to: '/admin/escalation',  icon: Bell,     label: 'Escalation', preview: true },
-  { to: '/admin/templates',   icon: Settings, label: 'Templates',  preview: true },
-
-  null, // divider
+  // Escalation Policies (/admin/escalation) is hidden until it is backed by the platform —
+  // its page is a preview that saves nothing. The route stays in App.jsx; add it back here when real.
 
   // Help
   { section: 'Help' },

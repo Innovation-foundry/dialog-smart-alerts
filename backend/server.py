@@ -37,6 +37,7 @@ import spatial
 import simulator
 import geocode
 import gis_client
+import channels
 from mqtt_client import MQTTClientManager
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
     app.state.loop = asyncio.get_running_loop()
     await db.init_db()
     await seed.run()
+    channels.ensure()
     
     # Initialize and start background MQTT client
     app.state.mqtt_client = MQTTClientManager(app)
@@ -443,6 +445,37 @@ async def get_kiosk_status(device_id: str):
             
     return {"status": "CLEAR"}
 
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHANNELS  —  how alerts reach people (SMS, WhatsApp, Email) + their default wording
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/channels")
+async def list_channels():
+    order = {c["id"]: i for i, c in enumerate(channels.DEFAULT_CHANNELS)}
+    rows = [{**c, "delivery": channels.delivery(c.get("type", c["id"]))} for c in _list("channels")]
+    rows.sort(key=lambda c: order.get(c["id"], 99))
+    return rows
+
+@app.get("/api/channels/variables")
+async def list_channel_variables():
+    return channels.VARIABLES
+
+@app.put("/api/channels/{id}")
+async def update_channel(id: str, req: Request):
+    _get("channels", id)
+    body = await req.json()
+    # Only the wording and the on/off switch are editable.
+    patch = {k: body[k] for k in ("template", "enabled") if k in body}
+    if "template" in patch:
+        problem = channels.validate_wording(patch["template"])
+        if problem:
+            raise HTTPException(422, problem)
+    if "enabled" in patch:
+        patch["enabled"] = bool(patch["enabled"])
+    updated = _update("channels", id, patch)
+    return {**updated, "delivery": channels.delivery(updated.get("type", id))}
 
 
 # ════════════════════════════════════════════════════════════════════════════

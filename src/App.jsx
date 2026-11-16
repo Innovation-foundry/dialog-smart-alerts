@@ -20,7 +20,7 @@ import AdminRoadSignBoards from './pages/admin/RoadSignBoards.jsx'
 
 // Admin – system
 import AdminEscalation from './pages/admin/EscalationPolicies.jsx'
-import AdminTemplates from './pages/admin/Templates.jsx'
+import AdminChannels from './pages/admin/Channels.jsx'
 
 // Setup
 import SetupWizard from './pages/SetupWizard.jsx'
@@ -68,7 +68,8 @@ export default function App() {
 
           {/* System admin */}
           <Route path="/admin/escalation" element={<Wrap><AdminEscalation /></Wrap>} />
-          <Route path="/admin/templates"  element={<Wrap><AdminTemplates /></Wrap>} />
+          <Route path="/admin/channels"   element={<Wrap><AdminChannels /></Wrap>} />
+          <Route path="/admin/templates"  element={<Navigate to="/admin/channels" replace />} />
           <Route path="/styleguide"       element={<Wrap><StyleGuide /></Wrap>} />
         </Route>
       </Routes>
