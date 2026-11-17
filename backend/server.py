@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 import seed
-import db
 import data_store
 import rule_engine
 import notifier
@@ -58,7 +57,6 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.loop = asyncio.get_running_loop()
-    await db.init_db()
     await seed.run()
     channels.ensure()
     if auth.credentials_configured():
@@ -1212,12 +1210,9 @@ async def legacy_upload(
         raise HTTPException(413, f"Image is larger than {UPLOAD_MAX_BYTES // (1024 * 1024)} MB")
     if not contents:
         raise HTTPException(400, "Uploaded file is empty")
-    filename = f"{uuid.uuid4().hex}{ext}"
-    (UPLOADS_DIR / filename).write_bytes(contents)
-    image_url = f"/uploads/{filename}"
 
-    # Resolve a device to attribute the upload to: explicit id, else first online
-    # camera (optionally scoped to the requested use case).
+    # Resolve a device to attribute the upload to — before writing anything to
+    # disk, so a rejection here doesn't leave an orphaned file in uploads/.
     device = data_store.get_by_id("devices", device_id) if device_id else None
     if not device:
         cams = [d for d in _list("devices")
@@ -1226,6 +1221,10 @@ async def legacy_upload(
         device = cams[0] if cams else None
     if not device:
         raise HTTPException(400, "No online camera registered to attribute this upload to")
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    (UPLOADS_DIR / filename).write_bytes(contents)
+    image_url = f"/uploads/{filename}"
 
     event, incident = await _ingest_event({
         "device_id":   device["id"],
