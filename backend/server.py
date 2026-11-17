@@ -117,12 +117,15 @@ def _is_public_api_path(path: str, method: str) -> bool:
     return False
 
 
+_GATED_PREFIXES = ("/api/", "/gis-app", "/basemap")
+
+
 @app.middleware("http")
 async def require_admin_session(request: Request, call_next):
     path = request.url.path
-    if path.startswith("/api/") and not _is_public_api_path(path, request.method):
-        if not auth.is_valid(request.cookies.get(auth.SESSION_COOKIE)):
-            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    gated = path.startswith(_GATED_PREFIXES) and not _is_public_api_path(path, request.method)
+    if gated and not auth.is_valid(request.cookies.get(auth.SESSION_COOKIE)):
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
     return await call_next(request)
 
 
