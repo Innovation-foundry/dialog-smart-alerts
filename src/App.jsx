@@ -2,6 +2,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AppShell from './components/shell/AppShell.jsx'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx'
 import TourProvider from './tour/TourProvider.jsx'
+import Login from './pages/Login.jsx'
+import { useAuth } from './hooks/useAuth.js'
+import { Spinner } from './components/ui'
 
 // Operations pages
 import Dashboard from './pages/Dashboard.jsx'
@@ -33,17 +36,34 @@ function Wrap({ children }) {
   return <ErrorBoundary>{children}</ErrorBoundary>
 }
 
+function RequireAuth({ children }) {
+  const { authenticated, login } = useAuth()
+  if (authenticated === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner size={24} />
+      </div>
+    )
+  }
+  if (!authenticated) {
+    return <Login onLogin={login} />
+  }
+  return children
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <TourProvider>
       <Routes>
-        {/* Setup wizard & Kiosk displays — full-screen, outside the dashboard chrome */}
-        <Route path="/setup" element={<Wrap><SetupWizard /></Wrap>} />
+        {/* Kiosk & sign displays are unauthenticated field hardware — no login. */}
         <Route path="/device/:deviceId" element={<Wrap><KioskDisplay /></Wrap>} />
         <Route path="/sign/:signId" element={<Wrap><SignDisplay /></Wrap>} />
 
-        <Route element={<AppShell />}>
+        {/* Setup wizard — full-screen, outside the dashboard chrome, still needs login */}
+        <Route path="/setup" element={<RequireAuth><Wrap><SetupWizard /></Wrap></RequireAuth>} />
+
+        <Route element={<RequireAuth><AppShell /></RequireAuth>}>
           <Route index element={<Wrap><Dashboard /></Wrap>} />
 
           {/* Operations */}

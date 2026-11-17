@@ -1,8 +1,9 @@
-import { Bell, BellOff, Menu } from 'lucide-react'
+import { Bell, BellOff, Menu, LogOut } from 'lucide-react'
 import HealthDot from './HealthDot.jsx'
 import dialogLogo from '../../assets/dialog-logo.jpg'
 import { useTour } from '../../tour/TourProvider.jsx'
 import { useSystemHealth } from '../../hooks/useSystemHealth.js'
+import { useAuth } from '../../hooks/useAuth.js'
 
 const ENV = import.meta.env.VITE_ENV ?? 'dev'
 
@@ -11,6 +12,7 @@ const ENV = import.meta.env.VITE_ENV ?? 'dev'
 export default function TopBar({ muteAlerts, onToggleMute, onToggleSidebar }) {
   const tour = useTour()
   const { health, reachable, dot } = useSystemHealth()
+  const { logout } = useAuth()
   return (
     <header className="h-14 bg-white border-b border-line flex items-center px-4 gap-3 shrink-0 z-30">
       <button
@@ -42,6 +44,15 @@ export default function TopBar({ muteAlerts, onToggleMute, onToggleSidebar }) {
           aria-label={muteAlerts ? 'Unmute audible alerts' : 'Mute audible alerts'}
         >
           {muteAlerts ? <BellOff size={18} /> : <Bell size={18} />}
+        </button>
+
+        <button
+          onClick={() => logout().then(() => window.location.reload())}
+          className="text-ink-muted hover:text-ink p-1.5 hover:bg-surface-alt rounded transition-colors"
+          title="Sign out"
+          aria-label="Sign out"
+        >
+          <LogOut size={18} />
         </button>
       </div>
     </header>

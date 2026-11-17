@@ -16,6 +16,7 @@ export function useApi(endpoint, { autoFetch = true } = {}) {
     setError(null)
     try {
       const res = await fetch(endpoint)
+      if (res.status === 401) return window.location.reload()
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       setData(await res.json())
     } catch (e) {

@@ -38,6 +38,7 @@ import simulator
 import geocode
 import gis_client
 import channels
+import auth
 from mqtt_client import MQTTClientManager
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
@@ -60,7 +61,12 @@ async def lifespan(app: FastAPI):
     await db.init_db()
     await seed.run()
     channels.ensure()
-    
+    if auth.credentials_configured():
+        print(f"[AUTH] Admin login ready — username: {auth.ADMIN_USERNAME}")
+    else:
+        print("[AUTH] WARNING: ADMIN_USERNAME/ADMIN_PASSWORD not set — the admin API "
+              "is unreachable (every request needs a session, login always fails).")
+
     # Initialize and start background MQTT client
     app.state.mqtt_client = MQTTClientManager(app)
     app.state.mqtt_client.start()
@@ -82,6 +88,71 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
+
+# ── Admin auth ───────────────────────────────────────────────────────────────
+# Device ingestion (POST /api/events) carries its own per-device api_key and
+# stays public. These few read endpoints drive unauthenticated field hardware
+# (kiosks, road-sign displays) and the top-bar health dot, so they also stay
+# public. Every other /api/* route needs an admin session.
+_PUBLIC_API_PATHS = {
+    "/api/system/health",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/stream",
+}
+_PUBLIC_API_PREFIXES = (
+    "/api/kiosks/",   # .../status — field kiosk display
+    "/api/road-signs/",   # .../status — field sign display
+)
+
+
+def _is_public_api_path(path: str, method: str) -> bool:
+    if path == "/api/events" and method == "POST":
+        return True
+    if path in _PUBLIC_API_PATHS:
+        return True
+    if path.startswith(_PUBLIC_API_PREFIXES) and path.endswith("/status") and method == "GET":
+        return True
+    return False
+
+
+@app.middleware("http")
+async def require_admin_session(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and not _is_public_api_path(path, request.method):
+        if not auth.is_valid(request.cookies.get(auth.SESSION_COOKIE)):
+            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    return await call_next(request)
+
+
+@app.post("/api/auth/login")
+async def login(body: dict):
+    username = str(body.get("username", ""))
+    password = str(body.get("password", ""))
+    if not auth.check_credentials(username, password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    token = auth.create_session()
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(
+        auth.SESSION_COOKIE, token,
+        httponly=True, samesite="lax", max_age=auth.SESSION_TTL_S,
+    )
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request):
+    auth.destroy_session(request.cookies.get(auth.SESSION_COOKIE))
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.SESSION_COOKIE)
+    return resp
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    return {"authenticated": auth.is_valid(request.cookies.get(auth.SESSION_COOKIE))}
+
 
 # ── SSE broadcast queue ──────────────────────────────────────────────────────
 _sse_queues: list[asyncio.Queue] = []
