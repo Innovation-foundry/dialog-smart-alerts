@@ -15,6 +15,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all application files
 COPY . .
 
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p backend/data backend/uploads \
+    && chown -R appuser:appuser /app
+USER appuser
+
 ENV PORT=8000
 EXPOSE 8000
 

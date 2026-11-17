@@ -1,0 +1,14 @@
+node_modules
+backend/venv
+backend/__pycache__
+backend/data
+backend/uploads
+backend/scratch
+demo_output
+.git
+.env
+.env.*
+!.env.example
+*.pyc
+services/gis/venv
+services/gis/__pycache__
