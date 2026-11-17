@@ -38,11 +38,19 @@ FALLBACK_WORDING = (
     "Confidence: {confidence}%. Location: {map_link} Incident: {incident_id}"
 )
 
+# SMS goes out in all three languages stacked in one message (not per-stakeholder
+# preference) — a public safety alert should be readable by anyone who gets it,
+# regardless of which language the sender assumed. This makes the message long
+# enough that Ideabiz will send it as a multi-part (concatenated) SMS.
+_SMS_TEMPLATE_EN = "[{severity}] {object_type} near {zone_name}. Confidence {confidence}%. {map_link} Incident {incident_id}"
+_SMS_TEMPLATE_SI = "[{severity}] {zone_name} අසල {object_type} හඳුනාගන්නා ලදී. විශ්වාසනීයත්වය {confidence}%. {map_link} සිද්ධිය {incident_id}"
+_SMS_TEMPLATE_TA = "[{severity}] {zone_name} அருகில் {object_type} கண்டறியப்பட்டது. நம்பகத்தன்மை {confidence}%. {map_link} சம்பவம் {incident_id}"
+SMS_TEMPLATE_MULTILINGUAL = f"{_SMS_TEMPLATE_EN}\n{_SMS_TEMPLATE_SI}\n{_SMS_TEMPLATE_TA}"
+
 DEFAULT_CHANNELS = [
     {
         "id": "sms", "type": "sms", "name": "SMS", "enabled": True,
-        "template": "[{severity}] {object_type} near {zone_name}. Confidence {confidence}%. "
-                    "{map_link} Incident {incident_id}",
+        "template": SMS_TEMPLATE_MULTILINGUAL,
     },
     {
         "id": "whatsapp", "type": "whatsapp", "name": "WhatsApp", "enabled": True,
@@ -58,12 +66,23 @@ DEFAULT_CHANNELS = [
 ]
 
 
+# The SMS template shipped before the Sinhala/Tamil wording was added — an
+# already-deployed instance has this exact string saved as its "sms" channel
+# row. Recognising it lets ensure() upgrade it below without touching wording
+# someone has actually edited in the Channels admin page.
+_SMS_TEMPLATE_EN_ONLY_PREVIOUS = _SMS_TEMPLATE_EN
+
+
 def ensure() -> None:
     """Create any missing channel with its default wording. Never overwrites an
-    existing channel, so edits made in the UI survive a restart."""
+    existing channel, so edits made in the UI survive a restart — except the
+    one-time SMS upgrade to the multilingual default above."""
     for ch in DEFAULT_CHANNELS:
-        if not data_store.get_by_id("channels", ch["id"]):
+        existing = data_store.get_by_id("channels", ch["id"])
+        if not existing:
             data_store.create("channels", dict(ch))
+        elif ch["id"] == "sms" and existing.get("template") == _SMS_TEMPLATE_EN_ONLY_PREVIOUS:
+            data_store.update("channels", ch["id"], {"template": SMS_TEMPLATE_MULTILINGUAL})
 
 
 def get_by_type(ch_type: str) -> dict | None:
